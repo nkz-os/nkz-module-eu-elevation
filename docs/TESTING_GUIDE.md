@@ -155,7 +155,7 @@ Once your module is uploaded:
 
 For testing issues:
 - Email: developers@nekazari.com
-- Check [External Developer Guide](https://github.com/k8-benetis/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md) troubleshooting section
+- Check [External Developer Guide](https://github.com/nkz-os/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md) troubleshooting section
 
 
 

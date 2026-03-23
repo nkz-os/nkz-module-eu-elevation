@@ -3,7 +3,7 @@
 ## Repository Information
 
 The repository is already created at:
-- **URL**: `https://github.com/k8-benetis/nkz-module-template`
+- **URL**: `https://github.com/nkz-os/nkz-module-template`
 - **Status**: Empty (ready for initial push)
 
 ## Initial Setup
@@ -19,7 +19,7 @@ git add .
 git commit -m "Initial commit: NKZ Module Template"
 
 # Add remote
-git remote add origin https://github.com/k8-benetis/nkz-module-template.git
+git remote add origin https://github.com/nkz-os/nkz-module-template.git
 
 # Push to GitHub
 git branch -M main
@@ -38,7 +38,7 @@ After pushing, test that developers can use it:
 ```bash
 # Test clone
 cd /tmp
-git clone https://github.com/k8-benetis/nkz-module-template.git test-module
+git clone https://github.com/nkz-os/nkz-module-template.git test-module
 cd test-module
 npm install
 npm run dev

@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/k8-benetis/nkz-module-eu-elevation/backend:latest
+          image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:latest
           imagePullPolicy: IfNotPresent
           command:
             - uvicorn
@@ -76,7 +76,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/k8-benetis/nkz-module-eu-elevation/backend:latest
+          image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:latest
           imagePullPolicy: IfNotPresent
           command:
             - celery

@@ -65,7 +65,7 @@ import { Button, Card, Input } from '@nekazari/ui-kit';
 - `GET /api/parcels` - List parcels
 - `GET /api/sensors` - List sensors
 
-For complete API documentation: [API Integration Guide](https://github.com/k8-benetis/nekazari-public/blob/main/docs/api/README.md)
+For complete API documentation: [API Integration Guide](https://github.com/nkz-os/nekazari-public/blob/main/docs/api/README.md)
 
 ## Manifest.json Required Fields
 
@@ -112,8 +112,8 @@ zip -r my-module-v1.0.0.zip \
 
 ## Links
 
-- [Complete Developer Guide](https://github.com/k8-benetis/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md)
-- [API Documentation](https://github.com/k8-benetis/nekazari-public/blob/main/docs/api/README.md)
+- [Complete Developer Guide](https://github.com/nkz-os/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md)
+- [API Documentation](https://github.com/nkz-os/nekazari-public/blob/main/docs/api/README.md)
 - [SDK NPM Package](https://www.npmjs.com/package/@nekazari/sdk)
 - [UI-Kit NPM Package](https://www.npmjs.com/package/@nekazari/ui-kit)
 

@@ -23,8 +23,8 @@ This directory contains additional documentation and guides for developing Nekaz
 
 For complete documentation, see:
 
-- **[External Developer Guide](https://github.com/k8-benetis/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md)** - Complete guide with all details
-- **[API Integration Guide](https://github.com/k8-benetis/nekazari-public/blob/main/docs/api/README.md)** - API endpoints and data models
+- **[External Developer Guide](https://github.com/nkz-os/nekazari-public/blob/main/docs/development/EXTERNAL_DEVELOPER_GUIDE.md)** - Complete guide with all details
+- **[API Integration Guide](https://github.com/nkz-os/nekazari-public/blob/main/docs/api/README.md)** - API endpoints and data models
 - **[SDK NPM Package](https://www.npmjs.com/package/@nekazari/sdk)** - SDK package documentation
 - **[UI-Kit NPM Package](https://www.npmjs.com/package/@nekazari/ui-kit)** - UI components documentation
 

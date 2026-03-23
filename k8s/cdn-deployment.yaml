@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: cdn
-          image: ghcr.io/k8-benetis/nkz-module-eu-elevation/terrain-cdn:latest
+          image: ghcr.io/nkz-os/nkz-module-eu-elevation/terrain-cdn:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

@@ -1,9 +1,7 @@
 """
-Orion-LD Integration Service for LIDAR Module.
+Orion-LD Integration Service for EU Elevation Module.
 
-Manages NGSI-LD entities for:
-- PointCloudLayer: Processed point cloud visualization layers
-- AgriTree: Individual detected trees as digital assets
+Manages NGSI-LD entities for geospatial layers.
 """
 
 import logging
@@ -20,7 +18,7 @@ class OrionLDClient:
     """
     Client for Orion-LD Context Broker operations.
     
-    Handles creation, update, and deletion of LIDAR-related entities.
+    Handles creation, update, and deletion of geospatial entities.
     """
     
     CONTEXT = [

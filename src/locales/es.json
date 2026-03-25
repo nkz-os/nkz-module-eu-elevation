@@ -39,5 +39,8 @@
     "autoMode": "Automático (Por Región)",
     "offMode": "Desactivado (Mapa Plano)",
     "customTopography": "Topografía Personalizada",
-    "updatingRelief": "Actualizando Relieve 3D..."
+    "updatingRelief": "Actualizando Relieve 3D...",
+    "corineLandCover": "CORINE Land Cover",
+    "corineDescription": "Clasificación de uso del suelo EU/UK (2018)",
+    "corineToggle": "Activar/desactivar capa CORINE Land Cover"
 }

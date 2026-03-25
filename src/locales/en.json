@@ -39,5 +39,8 @@
     "autoMode": "Automatic (By Region)",
     "offMode": "Off (Flat Map)",
     "customTopography": "Custom Topography",
-    "updatingRelief": "Updating 3D Relief..."
+    "updatingRelief": "Updating 3D Relief...",
+    "corineLandCover": "CORINE Land Cover",
+    "corineDescription": "EU/UK land use classification (2018)",
+    "corineToggle": "Toggle CORINE Land Cover layer"
 }

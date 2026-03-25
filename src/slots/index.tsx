@@ -27,7 +27,7 @@ export type ModuleViewerSlots = Record<SlotType, SlotWidgetDefinition[]> & {
  * Elevation Module Slots Configuration
  */
 export const moduleSlots: ModuleViewerSlots = {
-  // 1. Inject the Terrain Provider directly into the Cesium map
+  // 1. Inject the Terrain Provider + CLC WMS layer into the Cesium map
   'map-layer': [
     {
       id: 'elevation-cesium-layer',
@@ -38,8 +38,18 @@ export const moduleSlots: ModuleViewerSlots = {
     }
   ],
 
-  // 2. Add the Admin Panel to the dashboard 
-  // (In a real scenario, we might restrict this via showWhen or a dedicated admin route)
+  // 2. Layer toggle for CORINE Land Cover in the layers panel
+  'layer-toggle': [
+    {
+      id: 'clc-layer-toggle',
+      moduleId: MODULE_ID,
+      component: 'ElevationAdminControl',
+      priority: 30,
+      localComponent: ElevationAdminControl
+    }
+  ],
+
+  // 3. Add the Admin Panel to the dashboard
   'dashboard-widget': [
     {
       id: 'elevation-admin-control',
@@ -50,7 +60,7 @@ export const moduleSlots: ModuleViewerSlots = {
     }
   ],
 
-  // 3. Add to Context Panel for Unified Viewer access
+  // 4. Add to Context Panel for Unified Viewer access
   'context-panel': [
     {
       id: 'elevation-context-control',
@@ -61,8 +71,7 @@ export const moduleSlots: ModuleViewerSlots = {
     }
   ],
 
-  // Unused slots for this module
-  'layer-toggle': [],
+  // Unused slots
   'bottom-panel': [],
   'entity-tree': []
 };

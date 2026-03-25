@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 // The host env exposes Cesium globally
 declare const Cesium: any;
@@ -14,6 +14,10 @@ export interface ElevationLayerConfig {
     is_active: boolean;
 }
 
+// CORINE Land Cover 2018 WMS configuration
+const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
+const CLC_WMS_LAYERS = '0'; // First layer = CLC 2018 raster
+
 export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     const { t } = useTranslation('eu-elevation');
     const { getToken, getTenantId } = useAuth();
@@ -26,6 +30,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
 
     const originalProviderRef = useRef<any>(null);
     const activeUrlRef = useRef<string | null>(null);
+    const clcLayerRef = useRef<any>(null);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
 
     const layersRef = useRef<ElevationLayerConfig[]>([]);
@@ -44,7 +49,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             .catch(err => console.error("Failed to fetch layers", err));
     }, [viewer]);
 
-    const checkAutoBBOX = () => {
+    const checkAutoBBOX = useCallback(() => {
         if (currentModeRef.current !== 'auto' || !viewer || !viewer.camera) return;
 
         try {
@@ -53,7 +58,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             const lat = Cesium.Math.toDegrees(position.latitude);
 
             // Find first matching layer
-            const match = layersRef.current.find(l => {
+            const match = layersRef.current.find((l: ElevationLayerConfig) => {
                 if (l.bbox_minx == null || l.bbox_maxx == null || l.bbox_miny == null || l.bbox_maxy == null) return false;
                 return lon >= l.bbox_minx && lon <= l.bbox_maxx && lat >= l.bbox_miny && lat <= l.bbox_maxy;
             });
@@ -63,7 +68,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
         } catch (e) {
             console.warn("Auto BBOX check failed", e);
         }
-    };
+    }, [viewer]);
 
     const applyTerrain = (url: string | null) => {
         if (!viewer) return;
@@ -89,6 +94,40 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
         }
     };
 
+    // CORINE Land Cover WMS layer management
+    const addCLCLayer = useCallback(() => {
+        if (!viewer || clcLayerRef.current) return;
+
+        try {
+            const clcProvider = new Cesium.WebMapServiceImageryProvider({
+                url: CLC_WMS_URL,
+                layers: CLC_WMS_LAYERS,
+                parameters: {
+                    transparent: true,
+                    format: 'image/png',
+                },
+                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0), // EU + UK extent
+                credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
+            });
+
+            clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
+            clcLayerRef.current.alpha = 0.6; // Semi-transparent overlay
+        } catch (error) {
+            console.error("[nkz-module-eu-elevation] Failed to add CLC layer", error);
+        }
+    }, [viewer]);
+
+    const removeCLCLayer = useCallback(() => {
+        if (!viewer || !clcLayerRef.current) return;
+
+        try {
+            viewer.imageryLayers.remove(clcLayerRef.current, true);
+            clcLayerRef.current = null;
+        } catch (error) {
+            console.error("[nkz-module-eu-elevation] Failed to remove CLC layer", error);
+        }
+    }, [viewer]);
+
     useEffect(() => {
         if (!viewer || !viewer.scene) return;
 
@@ -103,6 +142,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileLoadProgress);
         }
 
+        // Terrain mode change handler
         const onPrefChange = (e: any) => {
             const detail = e.detail;
             currentModeRef.current = detail.mode;
@@ -116,25 +156,42 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             }
         };
 
-        // Initialize state
+        // CLC toggle handler
+        const onCLCToggle = (e: any) => {
+            const enabled = e.detail?.enabled;
+            if (enabled) {
+                addCLCLayer();
+            } else {
+                removeCLCLayer();
+            }
+        };
+
+        // Initialize terrain state
         const savedMode = localStorage.getItem('nkz_elevation_pref') || 'auto';
         currentModeRef.current = savedMode;
 
         if (savedMode === 'off') {
             applyTerrain(null);
         } else if (savedMode !== 'auto') {
-            // It's a layer ID, we wait for layersRef to populate and trigger an event or apply it
-            // For now, let fetch() callback handle finding it if it's slow
             const found = layersRef.current.find(l => l.id === savedMode);
             if (found) applyTerrain(found.url);
         }
 
+        // Initialize CLC state
+        const clcEnabled = localStorage.getItem('nkz_clc_enabled') === 'true';
+        if (clcEnabled) {
+            addCLCLayer();
+        }
+
         window.addEventListener('nkz.elevation.change', onPrefChange);
+        window.addEventListener('nkz.clc.toggle', onCLCToggle);
         viewer.camera.moveEnd.addEventListener(checkAutoBBOX);
 
         // Cleanup
         return () => {
             window.removeEventListener('nkz.elevation.change', onPrefChange);
+            window.removeEventListener('nkz.clc.toggle', onCLCToggle);
+            removeCLCLayer();
             if (viewer && !viewer.isDestroyed()) {
                 if (viewer.scene.globe.tileLoadProgressEvent) {
                     viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileLoadProgress);

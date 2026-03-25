@@ -1,5 +1,6 @@
 ---
-# Ingress: Elevation API & Terrain CDN
+# Ingress: Terrain CDN only
+# NOTE: /api/elevation goes through api-gateway, NOT this ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -13,16 +14,6 @@ metadata:
     module: eu-elevation
 spec:
   rules:
-    - host: nekazari.robotika.cloud
-      http:
-        paths:
-          - path: /api/elevation
-            pathType: Prefix
-            backend:
-              service:
-                name: elevation-api-service
-                port:
-                  number: 80
     - host: terrain.robotika.cloud
       http:
         paths:

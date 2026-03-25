@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Layers, Globe } from 'lucide-react';
+import { Layers, Globe, Map } from 'lucide-react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 
 export interface ElevationLayer {
@@ -26,13 +26,17 @@ export const ElevationAdminControl: React.FC = () => {
     const [layers, setLayers] = useState<ElevationLayer[]>([]);
     const [selected, setSelected] = useState<string>('auto');
     const [isLoading, setIsLoading] = useState(true);
+    const [clcEnabled, setCLCEnabled] = useState(false);
 
     useEffect(() => {
-        // Load initial preference
+        // Load initial preferences
         const savedPref = localStorage.getItem('nkz_elevation_pref');
         if (savedPref) {
             setSelected(savedPref);
         }
+
+        const savedCLC = localStorage.getItem('nkz_clc_enabled') === 'true';
+        setCLCEnabled(savedCLC);
 
         const fetchLayers = async () => {
             try {
@@ -62,9 +66,19 @@ export const ElevationAdminControl: React.FC = () => {
         window.dispatchEvent(new CustomEvent('nkz.elevation.change', { detail }));
     };
 
+    const handleCLCToggle = () => {
+        const newState = !clcEnabled;
+        setCLCEnabled(newState);
+        localStorage.setItem('nkz_clc_enabled', String(newState));
+
+        window.dispatchEvent(new CustomEvent('nkz.clc.toggle', {
+            detail: { enabled: newState }
+        }));
+    };
+
     return (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex flex-col space-y-3 relative overflow-hidden">
-            {/* Header */}
+            {/* Terrain Provider Header */}
             <div className="flex items-center gap-2 mb-1">
                 <Globe className="w-5 h-5 text-green-600" />
                 <h3 className="text-gray-800 font-semibold flex-1">{t('globeTerrain', '3D Terrain')}</h3>
@@ -96,6 +110,30 @@ export const ElevationAdminControl: React.FC = () => {
                 </select>
                 <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+            </div>
+
+            {/* CORINE Land Cover Toggle */}
+            <div className="border-t border-gray-100 pt-3 mt-1">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Map className="w-4 h-4 text-emerald-600" />
+                        <div>
+                            <span className="text-sm font-medium text-gray-700">{t('corineLandCover', 'CORINE Land Cover')}</span>
+                            <p className="text-xs text-gray-400">{t('corineDescription', 'EU/UK land use classification (2018)')}</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleCLCToggle}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 ${clcEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                        role="switch"
+                        aria-checked={clcEnabled}
+                        aria-label={t('corineToggle', 'Toggle CORINE Land Cover layer')}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${clcEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                        />
+                    </button>
                 </div>
             </div>
         </div>

@@ -1,7 +1,7 @@
 -- =============================================================================
--- LIDAR Module Registration for Nekazari Platform
+-- EU Elevation Module Registration for Nekazari Platform
 -- =============================================================================
--- Register the LIDAR module in the platform database
+-- Register the EU Elevation module in the platform database
 -- Execute: kubectl exec -it -n nekazari $(kubectl get pods -n nekazari -l app=postgresql -o jsonpath='{.items[0].metadata.name}') -- psql -U nekazari -d nekazari -f -
 -- =============================================================================
 
@@ -27,55 +27,58 @@ INSERT INTO marketplace_modules (
     required_roles,
     metadata
 ) VALUES (
-    'lidar',
-    'lidar',
-    'LiDAR Point Cloud',
-    'Visualize LiDAR point cloud data from PNOA in CesiumJS. Download LAZ files, detect trees, and convert to 3D Tiles for interactive visualization.',
-    '/modules/lidar/assets/remoteEntry.js',
-    'lidar_module',
-    './App',
+    'nkz-module-eu-elevation',
+    'nkz-module-eu-elevation',
+    'EU Elevation Module',
+    'Premium module for 3D terrain and elevation data across the European Union and the United Kingdom. Includes Quantized Mesh generation, CORINE Land Cover overlay, and multi-tenant terrain source management.',
+    '/modules/nkz-module-eu-elevation/nekazari-module.js',
+    'nkz_module_eu_elevation',
+    './moduleEntry',
     '1.0.0',
     'Nekazari Team',
     'analytics',
     NULL,
-    '/lidar',
-    'LiDAR',
+    '/eu-elevation',
+    'EU Elevation',
     'ADDON_PAID',
     'premium',
     'PAID',
     true,
-    ARRAY['Farmer', 'TenantAdmin', 'TechnicalConsultant', 'PlatformAdmin'],
+    ARRAY['Farmer', 'TenantAdmin', 'PlatformAdmin'],
     '{
-        "icon": "📡",
-        "color": "#8B5CF6",
-        "shortDescription": "3D point cloud visualization",
+        "icon": "🏔️",
+        "color": "#3B82F6",
+        "shortDescription": "Pan-European 3D Elevation Models",
         "features": [
-            "PNOA LiDAR download",
-            "Tree detection and counting",
-            "3D Tiles visualization",
-            "NDVI colorization",
-            "CesiumJS integration"
+            "Quantized Mesh Processing",
+            "WCS/GeoTIFF Ingestion",
+            "CORINE Land Cover Overlay",
+            "Geometry Decimation",
+            "Multi-tenant Terrain Sources"
         ],
         "slots": {
-            "layer-toggle": [
-                {"id": "lidar-layer-control", "component": "LidarLayerControl", "priority": 10}
-            ],
             "map-layer": [
-                {"id": "lidar-cesium-layer", "component": "LidarLayer", "priority": 10}
+                {"id": "elevation-cesium-layer", "component": "ElevationLayer", "priority": 10}
+            ],
+            "layer-toggle": [
+                {"id": "clc-layer-toggle", "component": "ElevationAdminControl", "priority": 30}
+            ],
+            "dashboard-widget": [
+                {"id": "elevation-admin-control", "component": "ElevationAdminControl", "priority": 50}
             ],
             "context-panel": [
-                {"id": "lidar-config", "component": "LidarConfig", "priority": 20, "showWhen": {"entityType": ["AgriParcel"]}}
+                {"id": "elevation-context-control", "component": "ElevationAdminControl", "priority": 50}
             ]
         },
         "navigationItems": [
             {
-                "path": "/lidar",
-                "label": "LiDAR",
-                "icon": "layers"
+                "path": "/eu-elevation",
+                "label": "EU Elevation",
+                "icon": "mountain"
             }
         ],
         "backend_only": false,
-        "backend_url": "http://lidar-api-service:80"
+        "backend_url": "http://elevation-api-service:80"
     }'::jsonb
 ) ON CONFLICT (id) DO UPDATE SET
     display_name = EXCLUDED.display_name,
@@ -92,15 +95,7 @@ INSERT INTO marketplace_modules (
     metadata = EXCLUDED.metadata,
     updated_at = NOW();
 
--- Auto-install for all existing premium tenants (ADDON_PAID)
--- Note: For PAID addons, you'd typically not auto-install
--- This is commented out - enable installation via admin UI
--- INSERT INTO tenant_installed_modules (tenant_id, module_id, is_enabled, configuration)
--- SELECT DISTINCT t.id, 'lidar', true, '{}'::jsonb
--- FROM tenants t WHERE t.plan_type = 'premium'
--- ON CONFLICT (tenant_id, module_id) DO NOTHING;
-
 -- Verify registration
 SELECT id, name, display_name, version, is_active, route_path, module_type 
 FROM marketplace_modules 
-WHERE id = 'lidar';
+WHERE id = 'nkz-module-eu-elevation';

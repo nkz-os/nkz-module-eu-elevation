@@ -1,4 +1,1 @@
-"""
-LIDAR Module Backend
-"""
-
+"""EU Elevation Module Backend"""

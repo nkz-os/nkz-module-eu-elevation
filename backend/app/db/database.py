@@ -36,7 +36,6 @@ def get_db():
 def init_db():
     """Initialize database tables."""
     # Import all models to register them with Base
-    from app.models import lidar_models  # noqa: F401
     from app.models import elevation_models  # noqa: F401
     
     # Create tables

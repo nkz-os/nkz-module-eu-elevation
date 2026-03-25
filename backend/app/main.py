@@ -3,6 +3,7 @@ FastAPI main application for EU Elevation Module.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,21 +19,28 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# CORS: explicit whitelist from env var, never wildcard
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     logger.info("Starting EU Elevation Module API...")
-    
+
     # Initialize database tables
     try:
         init_db()
         logger.info("Database tables initialized")
     except Exception as e:
         logger.warning(f"Database initialization warning: {e}")
-    
+
     yield
-    
+
     logger.info("Shutting down EU Elevation Module API...")
 
 
@@ -41,7 +49,7 @@ app = FastAPI(
     title="EU Elevation Module API",
     description="""
     EU 3D Elevation and Terrain processing for Nekazari Platform.
-    
+
     ## Features
     - BBOX Selective Ingestion of WCS/GeoTIFF
     - Generation of Quantized Mesh (.terrain)
@@ -52,14 +60,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS middleware — explicit origins only
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Tenant-ID"],
+    )
+else:
+    logger.warning("ALLOWED_ORIGINS not set — CORS middleware disabled. Set it for production.")
 
 # Include routers
 app.include_router(elevation.router, prefix="/api/elevation", tags=["Elevation Processing"])

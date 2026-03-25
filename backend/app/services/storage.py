@@ -1,7 +1,7 @@
 """
-MinIO/S3 Storage Service for LIDAR Module.
+MinIO/S3 Storage Service for EU Elevation Module.
 
-Handles uploading and managing 3D Tiles and related assets.
+Handles uploading and managing terrain tiles and related assets.
 """
 
 import logging
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class StorageService:
     """
-    Service for managing LiDAR assets in MinIO/S3.
+    Service for managing terrain assets in MinIO/S3.
     
     Handles:
     - Uploading 3D Tiles directories

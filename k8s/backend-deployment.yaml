@@ -37,11 +37,24 @@ spec:
               value: "redis://redis-service:6379/10"
             - name: CELERY_RESULT_BACKEND
               value: "redis://redis-service:6379/11"
-            - name: TERRAIN_OUTPUT_DIR
-              value: "/tmp/terrain_output"
-          volumeMounts:
-            - name: terrain-data
-              mountPath: /tmp/terrain_output
+            - name: TERRAIN_WORK_DIR
+              value: "/tmp/terrain_work"
+            - name: ALLOWED_ORIGINS
+              value: "https://nekazari.robotika.cloud"
+            - name: JWT_ISSUER
+              value: "https://auth.robotika.cloud/auth/realms/nekazari"
+            - name: JWKS_URL
+              value: "https://auth.robotika.cloud/auth/realms/nekazari/protocol/openid-connect/certs"
+            - name: MINIO_ENDPOINT
+              value: "minio-service:9000"
+            - name: MINIO_BUCKET
+              value: "terrain-tilesets"
+            - name: DATABASE_URL
+              value: "postgresql://nekazari:nekazari@postgresql:5432/nekazari"
+          envFrom:
+            - secretRef:
+                name: minio-secret
+                optional: true
           resources:
             requests:
               memory: "128Mi"
@@ -49,10 +62,6 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
-      volumes:
-        - name: terrain-data
-          persistentVolumeClaim:
-            claimName: terrain-data-pvc
 ---
 # Deployment: Elevation Worker
 apiVersion: apps/v1
@@ -90,15 +99,20 @@ spec:
               value: "redis://redis-service:6379/10"
             - name: CELERY_RESULT_BACKEND
               value: "redis://redis-service:6379/11"
-            - name: TERRAIN_OUTPUT_DIR
-              value: "/tmp/terrain_output"
+            - name: TERRAIN_WORK_DIR
+              value: "/tmp/terrain_work"
             - name: GDAL_CACHEMAX
               value: "2048"
             - name: GDAL_NUM_THREADS
               value: "ALL_CPUS"
-          volumeMounts:
-            - name: terrain-data
-              mountPath: /tmp/terrain_output
+            - name: MINIO_ENDPOINT
+              value: "minio-service:9000"
+            - name: MINIO_BUCKET
+              value: "terrain-tilesets"
+          envFrom:
+            - secretRef:
+                name: minio-secret
+                optional: true
           resources:
             requests:
               memory: "512Mi"
@@ -106,10 +120,6 @@ spec:
             limits:
               memory: "2Gi"
               cpu: "1000m"
-      volumes:
-        - name: terrain-data
-          persistentVolumeClaim:
-            claimName: terrain-data-pvc
 ---
 # Service: Elevation API
 apiVersion: v1

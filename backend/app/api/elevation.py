@@ -13,6 +13,8 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from pydantic import BaseModel, Field
@@ -431,3 +433,59 @@ async def delete_elevation_layer(
     db.delete(layer)
     db.commit()
     return None
+
+@router.get("/sync/vectorial")
+async def sync_vectorial(
+    last_pulled_at: int = 0,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
+    current_user: dict = Depends(require_auth)
+):
+    """
+    Standard Offline Vector Sync Endpoint for the eu-elevation module.
+    Returns WatermelonDB-compatible JSON for elevation_layers.
+    """
+    current_ts = int(time.time() * 1000)
+    
+    query = db.query(ElevationLayer).filter(ElevationLayer.tenant_id == tenant_id)
+    if last_pulled_at > 0:
+        # Convert ms timestamp to datetime 
+        last_dt = datetime.fromtimestamp(last_pulled_at / 1000.0, tz=timezone.utc)
+        # Assuming SQLAlchemy comparison with timezone-aware datetime works
+        query = query.filter(ElevationLayer.updated_at >= last_dt)
+        
+    layers = query.all()
+    
+    updated_items = []
+    created_items = []
+    
+    for layer in layers:
+        item = {
+            'remote_id': str(layer.id),
+            'id': str(layer.id),
+            'name': layer.name,
+            'url': layer.url,
+            'bbox_minx': layer.bbox_minx,
+            'bbox_miny': layer.bbox_miny,
+            'bbox_maxx': layer.bbox_maxx,
+            'bbox_maxy': layer.bbox_maxy,
+            'is_active': layer.is_active,
+            'created_at': int(layer.created_at.timestamp() * 1000) if layer.created_at else current_ts,
+            'updated_at': int(layer.updated_at.timestamp() * 1000) if layer.updated_at else current_ts
+        }
+        
+        if last_pulled_at == 0:
+            created_items.append(item)
+        else:
+            updated_items.append(item)
+            
+    return {
+        "changes": {
+            "elevation_layers": {
+                "created": created_items,
+                "updated": updated_items,
+                "deleted": []
+            }
+        },
+        "timestamp": current_ts
+    }

@@ -8,24 +8,35 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import QueuePool
 from app.config import settings
 
-# Create database engine with connection pooling
-engine = create_engine(
-    settings.DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,  # Verify connections before use
-)
-
-# Session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base class for ORM models
+_engine = None
+SessionLocal = None
 Base = declarative_base()
+
+
+def get_engine():
+    """Lazy-init engine to avoid failures in CI without DATABASE_URL."""
+    global _engine, SessionLocal
+    if _engine is None:
+        url = settings.DATABASE_URL
+        if not url:
+            # CI fallback — engine won't be used in smoke test
+            return None
+        _engine = create_engine(
+            url,
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+    return _engine
 
 
 def get_db():
     """Dependency for getting database sessions."""
+    engine = get_engine()
+    if engine is None:
+        raise RuntimeError("DATABASE_URL not configured")
     db = SessionLocal()
     try:
         yield db
@@ -35,8 +46,8 @@ def get_db():
 
 def init_db():
     """Initialize database tables."""
-    # Import all models to register them with Base
+    engine = get_engine()
+    if engine is None:
+        return
     from app.models import elevation_models  # noqa: F401
-    
-    # Create tables
     Base.metadata.create_all(bind=engine)

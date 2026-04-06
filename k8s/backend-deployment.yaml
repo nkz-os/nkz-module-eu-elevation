@@ -33,10 +33,15 @@ spec:
           ports:
             - containerPort: 8000
           env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
             - name: CELERY_BROKER_URL
-              value: "redis://redis-service:6379/10"
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/10"
             - name: CELERY_RESULT_BACKEND
-              value: "redis://redis-service:6379/11"
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/11"
             - name: TERRAIN_WORK_DIR
               value: "/tmp/terrain_work"
             - name: ALLOWED_ORIGINS
@@ -49,10 +54,19 @@ spec:
               value: "minio-service:9000"
             - name: MINIO_BUCKET
               value: "terrain-tilesets"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-user
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-password
+                  optional: true
           envFrom:
-            - secretRef:
-                name: minio-secret
-                optional: true
             - secretRef:
                 name: elevation-db-secret
                 optional: false
@@ -96,10 +110,15 @@ spec:
             - "--loglevel=info"
             - "--concurrency=2"
           env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
             - name: CELERY_BROKER_URL
-              value: "redis://redis-service:6379/10"
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/10"
             - name: CELERY_RESULT_BACKEND
-              value: "redis://redis-service:6379/11"
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/11"
             - name: TERRAIN_WORK_DIR
               value: "/tmp/terrain_work"
             - name: GDAL_CACHEMAX
@@ -110,20 +129,29 @@ spec:
               value: "minio-service:9000"
             - name: MINIO_BUCKET
               value: "terrain-tilesets"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-user
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-password
+                  optional: true
           envFrom:
-            - secretRef:
-                name: minio-secret
-                optional: true
             - secretRef:
                 name: elevation-db-secret
                 optional: false
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "100m"
+              memory: "256Mi"
+              cpu: "25m"
             limits:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "1Gi"
+              cpu: "250m"
 ---
 # Service: Elevation API
 apiVersion: v1

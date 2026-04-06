@@ -18,7 +18,7 @@ s3 = boto3.client(
 
 MODULE_ID = "nkz-module-eu-elevation"
 local_path = f"dist/nkz-module.js"
-s3_key = f"modules/{MODULE_ID}/nekazari-module.js"
+s3_key = f"modules/{MODULE_ID}/nkz-module.js"
 
 if not os.path.exists(local_path):
     print(f"Error: {local_path} not found. Run 'pnpm run build:module' first.")

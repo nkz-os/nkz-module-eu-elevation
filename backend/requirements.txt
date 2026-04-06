@@ -21,6 +21,7 @@ pydantic-settings>=2.2.1
 
 # ORM
 SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
 
 # Observability
 loguru>=0.7.2

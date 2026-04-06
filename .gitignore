@@ -7,3 +7,6 @@ dist/
 .vscode/
 .idea/
 **/__pycache__/
+*.md
+!README.md
+!LICENSE

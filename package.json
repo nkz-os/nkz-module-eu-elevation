@@ -16,7 +16,7 @@
     "lucide-react": "^0.424.0"
   },
   "devDependencies": {
-    "@nekazari/module-builder": "file:../nkz/packages/module-builder",
+    "@nekazari/module-builder": "^1.0.0",
     "@nekazari/sdk": "^1.0.0",
     "@nekazari/ui-kit": "^1.0.0",
     "@types/react": "^18.3.3",

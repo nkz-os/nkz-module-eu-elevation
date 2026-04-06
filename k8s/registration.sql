@@ -31,7 +31,7 @@ INSERT INTO marketplace_modules (
     'nkz-module-eu-elevation',
     'EU Elevation Module',
     'Premium module for 3D terrain and elevation data across the European Union and the United Kingdom. Includes Quantized Mesh generation, CORINE Land Cover overlay, and multi-tenant terrain source management.',
-    '/modules/nkz-module-eu-elevation/nekazari-module.js',
+    '/modules/nkz-module-eu-elevation/nkz-module.js',
     'nkz_module_eu_elevation',
     './moduleEntry',
     '1.0.0',

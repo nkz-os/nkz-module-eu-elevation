@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
-// The host env exposes Cesium globally
+import { createTerrainProvider, TerrainProviderConfig, TerrainProviderType } from '../utils/terrainFactory';
+
 declare const Cesium: any;
 
 export interface ElevationLayerConfig {
@@ -14,180 +15,163 @@ export interface ElevationLayerConfig {
     is_active: boolean;
 }
 
-// CORINE Land Cover 2018 WMS configuration
+export interface TerrainTokens {
+    cesium_ion_token?: string;
+    maptiler_api_key?: string;
+    custom_terrain_url?: string;
+    provider_type: string;
+}
+
 const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
-const CLC_WMS_LAYERS = '0'; // First layer = CLC 2018 raster
+const CLC_WMS_LAYERS = '0';
 
 export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     const { t } = useTranslation('eu-elevation');
     const { getToken, getTenantId } = useAuth();
 
-    const apiClient = useMemo(() => new NKZClient({
+    const apiClient = React.useMemo(() => new NKZClient({
         baseUrl: '/api/elevation',
         getToken,
         getTenantId
     }), [getToken, getTenantId]);
 
-    const originalProviderRef = useRef<any>(null);
-    const activeUrlRef = useRef<string | null>(null);
+    const activeProviderRef = useRef<any>(null);
     const clcLayerRef = useRef<any>(null);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
-
     const layersRef = useRef<ElevationLayerConfig[]>([]);
-    const currentModeRef = useRef<string>('auto');
+    const tokensRef = useRef<TerrainTokens | null>(null);
+    const currentModeRef = useRef<TerrainProviderType>('off');
 
-    // Fetch layers once for Auto mode calculations
+    // Fetch tokens + layers on mount
     useEffect(() => {
-        apiClient.get<ElevationLayerConfig[]>('/layers')
-            .then(data => {
-                layersRef.current = data;
-                // Trigger auto check if currently in auto mode and viewer exists
-                if (currentModeRef.current === 'auto' && viewer) {
-                    checkAutoBBOX();
-                }
-            })
-            .catch(err => console.error("Failed to fetch layers", err));
+        Promise.all([
+            apiClient.get<TerrainTokens>('/preferences/tokens').catch(() => null),
+            apiClient.get<ElevationLayerConfig[]>('/layers').catch(() => []),
+        ]).then(([tok, layers]) => {
+            tokensRef.current = tok;
+            layersRef.current = layers || [];
+            if (viewer && tok) {
+                applyPreference(tok, layers || []);
+            }
+        });
     }, [viewer]);
 
-    const checkAutoBBOX = useCallback(() => {
-        if (currentModeRef.current !== 'auto' || !viewer || !viewer.camera) return;
+    const applyPreference = useCallback((tok: TerrainTokens, layers: ElevationLayerConfig[]) => {
+        if (!viewer) return;
+        currentModeRef.current = tok.provider_type as TerrainProviderType;
 
+        let config: TerrainProviderConfig;
+
+        if (tok.provider_type === 'auto') {
+            const match = findLayerByCameraPosition(layers);
+            config = { type: match ? 'custom' : 'off', customUrl: match?.url };
+        } else if (tok.provider_type === 'custom' && tok.custom_terrain_url) {
+            config = { type: 'custom', customUrl: tok.custom_terrain_url };
+        } else if (tok.provider_type === 'maptiler') {
+            config = { type: 'maptiler', maptilerApiKey: tok.maptiler_api_key };
+        } else if (tok.provider_type === 'cesium_world') {
+            config = { type: 'cesium_world', cesiumIonToken: tok.cesium_ion_token };
+        } else {
+            config = { type: 'off' };
+        }
+
+        const provider = createTerrainProvider(config);
+        setTerrainProvider(provider);
+    }, [viewer]);
+
+    const findLayerByCameraPosition = (layers: ElevationLayerConfig[]): ElevationLayerConfig | null => {
+        if (!viewer?.camera) return null;
         try {
-            const position = viewer.camera.positionCartographic;
-            const lon = Cesium.Math.toDegrees(position.longitude);
-            const lat = Cesium.Math.toDegrees(position.latitude);
-
-            // Find first matching layer
-            const match = layersRef.current.find((l: ElevationLayerConfig) => {
+            const pos = viewer.camera.positionCartographic;
+            const lon = Cesium.Math.toDegrees(pos.longitude);
+            const lat = Cesium.Math.toDegrees(pos.latitude);
+            return layers.find(l => {
                 if (l.bbox_minx == null || l.bbox_maxx == null || l.bbox_miny == null || l.bbox_maxy == null) return false;
                 return lon >= l.bbox_minx && lon <= l.bbox_maxx && lat >= l.bbox_miny && lat <= l.bbox_maxy;
-            });
-
-            const targetUrl = match ? match.url : null;
-            applyTerrain(targetUrl);
-        } catch (e) {
-            console.warn("Auto BBOX check failed", e);
-        }
-    }, [viewer]);
-
-    const applyTerrain = (url: string | null) => {
-        if (!viewer) return;
-
-        // Don't recreate if it's already the active one
-        if (activeUrlRef.current === url) return;
-
-        try {
-            if (!url) {
-                // Flat Ellipsoid terrain
-                viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-                activeUrlRef.current = null;
-            } else {
-                viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
-                    url: url,
-                    requestVertexNormals: true,
-                    requestWaterMask: false,
-                });
-                activeUrlRef.current = url;
-            }
-        } catch (error) {
-            console.error("[nkz-module-eu-elevation] Failed to switch terrain provider", error);
+            }) || null;
+        } catch {
+            return null;
         }
     };
 
-    // CORINE Land Cover WMS layer management
+    const setTerrainProvider = (provider: any) => {
+        if (!viewer) return;
+        activeProviderRef.current = provider;
+        try {
+            viewer.terrainProvider = provider;
+        } catch (error) {
+            console.error('[Elevation] Failed to set terrain provider:', error);
+        }
+    };
+
     const addCLCLayer = useCallback(() => {
         if (!viewer || clcLayerRef.current) return;
-
         try {
             const clcProvider = new Cesium.WebMapServiceImageryProvider({
                 url: CLC_WMS_URL,
                 layers: CLC_WMS_LAYERS,
-                parameters: {
-                    transparent: true,
-                    format: 'image/png',
-                },
-                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0), // EU + UK extent
+                parameters: { transparent: true, format: 'image/png' },
+                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0),
                 credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
             });
-
             clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
-            clcLayerRef.current.alpha = 0.6; // Semi-transparent overlay
+            clcLayerRef.current.alpha = 0.6;
         } catch (error) {
-            console.error("[nkz-module-eu-elevation] Failed to add CLC layer", error);
+            console.error('[Elevation] Failed to add CLC layer:', error);
         }
     }, [viewer]);
 
     const removeCLCLayer = useCallback(() => {
         if (!viewer || !clcLayerRef.current) return;
-
         try {
             viewer.imageryLayers.remove(clcLayerRef.current, true);
             clcLayerRef.current = null;
         } catch (error) {
-            console.error("[nkz-module-eu-elevation] Failed to remove CLC layer", error);
+            console.error('[Elevation] Failed to remove CLC layer:', error);
         }
     }, [viewer]);
 
     useEffect(() => {
-        if (!viewer || !viewer.scene) return;
-
-        // Save original provider to restore on unmount if needed
-        originalProviderRef.current = viewer.terrainProvider;
+        if (!viewer?.scene) return;
 
         const onTileLoadProgress = (queuedTiles: number) => {
             setIsLoadingTiles(queuedTiles > 0);
         };
-
         if (viewer.scene.globe.tileLoadProgressEvent) {
             viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileLoadProgress);
         }
 
-        // Terrain mode change handler
         const onPrefChange = (e: any) => {
             const detail = e.detail;
-            currentModeRef.current = detail.mode;
-
-            if (detail.mode === 'off') {
-                applyTerrain(null);
-            } else if (detail.mode === 'layer' && detail.layer) {
-                applyTerrain(detail.layer.url);
-            } else if (detail.mode === 'auto') {
-                checkAutoBBOX();
+            if (detail.mode === 'refresh') {
+                Promise.all([
+                    apiClient.get<TerrainTokens>('/preferences/tokens').catch(() => null),
+                    apiClient.get<ElevationLayerConfig[]>('/layers').catch(() => []),
+                ]).then(([tok, layers]) => {
+                    if (tok) {
+                        tokensRef.current = tok;
+                        layersRef.current = layers || [];
+                        applyPreference(tok, layers || []);
+                    }
+                });
             }
         };
 
-        // CLC toggle handler
         const onCLCToggle = (e: any) => {
-            const enabled = e.detail?.enabled;
-            if (enabled) {
-                addCLCLayer();
-            } else {
-                removeCLCLayer();
-            }
+            if (e.detail?.enabled) addCLCLayer(); else removeCLCLayer();
         };
 
-        // Initialize terrain state
-        const savedMode = localStorage.getItem('nkz_elevation_pref') || 'auto';
-        currentModeRef.current = savedMode;
-
-        if (savedMode === 'off') {
-            applyTerrain(null);
-        } else if (savedMode !== 'auto') {
-            const found = layersRef.current.find(l => l.id === savedMode);
-            if (found) applyTerrain(found.url);
-        }
-
-        // Initialize CLC state
-        const clcEnabled = localStorage.getItem('nkz_clc_enabled') === 'true';
-        if (clcEnabled) {
-            addCLCLayer();
-        }
+        const savedCLC = localStorage.getItem('nkz_clc_enabled') === 'true';
+        if (savedCLC) addCLCLayer();
 
         window.addEventListener('nkz.elevation.change', onPrefChange);
         window.addEventListener('nkz.clc.toggle', onCLCToggle);
-        viewer.camera.moveEnd.addEventListener(checkAutoBBOX);
+        viewer.camera.moveEnd.addEventListener(() => {
+            if (currentModeRef.current === 'auto') {
+                applyPreference(tokensRef.current || { provider_type: 'off' }, layersRef.current);
+            }
+        });
 
-        // Cleanup
         return () => {
             window.removeEventListener('nkz.elevation.change', onPrefChange);
             window.removeEventListener('nkz.clc.toggle', onCLCToggle);
@@ -196,12 +180,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
                 if (viewer.scene.globe.tileLoadProgressEvent) {
                     viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileLoadProgress);
                 }
-                if (viewer.camera && viewer.camera.moveEnd) {
-                    viewer.camera.moveEnd.removeEventListener(checkAutoBBOX);
-                }
-                if (originalProviderRef.current) {
-                    viewer.terrainProvider = originalProviderRef.current;
-                }
+                viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
             }
         };
     }, [viewer]);

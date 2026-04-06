@@ -22,22 +22,29 @@ class StorageService:
     Service for managing terrain assets in MinIO/S3.
     
     Handles:
-    - Uploading 3D Tiles directories
-    - Managing tileset.json and .pnts files
+    - Uploading quantized mesh tile directories
+    - Managing layer.json and .terrain files
     - Generating public URLs for frontend
     """
     
     def __init__(self):
-        self.client = boto3.client(
-            's3',
-            endpoint_url=f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT}",
-            aws_access_key_id=settings.MINIO_ACCESS_KEY,
-            aws_secret_access_key=settings.MINIO_SECRET_KEY,
-            config=Config(signature_version='s3v4'),
-            region_name='us-east-1'  # MinIO doesn't care, but boto3 needs it
-        )
+        self._client = None
         self.bucket = settings.MINIO_BUCKET
-        self._ensure_bucket()
+    
+    @property
+    def client(self):
+        """Lazy-init boto3 client to avoid failures during import."""
+        if self._client is None:
+            self._client = boto3.client(
+                's3',
+                endpoint_url=f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT}",
+                aws_access_key_id=settings.MINIO_ACCESS_KEY,
+                aws_secret_access_key=settings.MINIO_SECRET_KEY,
+                config=Config(signature_version='s3v4'),
+                region_name='us-east-1',
+            )
+            self._ensure_bucket()
+        return self._client
     
     def _ensure_bucket(self):
         """Ensure the bucket exists."""

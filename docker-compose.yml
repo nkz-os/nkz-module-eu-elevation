@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # The FastAPI Backend (Receives UI API calls for BBOX ingestion)
   elevation-api:
     build:
       context: ./backend
@@ -9,45 +6,47 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./backend/app:/app/app
-      - terrain_data:/tmp/terrain_output
     ports:
       - "8008:8000"
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - TERRAIN_OUTPUT_DIR=/tmp/terrain_output
+      - CELERY_BROKER_URL=redis://redis:6379/10
+      - CELERY_RESULT_BACKEND=redis://redis:6379/11
+      - DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nekazari
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=terrain-tilesets
+      - JWT_ISSUER=http://keycloak:8080/auth/realms/nekazari
+      - TRUST_API_GATEWAY=false
     depends_on:
       - redis
+      - postgresql
     networks:
       - elevation-net
 
-  # The GDAL + Python Celery Worker (Executes the heavy ETL pipeline)
   elevation-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # Set worker_prefetch_multiplier to 1 in Celery to prevent it from hoarding tasks,
-    # and concurrency to 1 or 2 to avoid memory starvation during GDAL operations
     command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
     volumes:
       - ./backend/app:/app/app
-      - terrain_data:/tmp/terrain_output
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - TERRAIN_OUTPUT_DIR=/tmp/terrain_output
+      - CELERY_BROKER_URL=redis://redis:6379/10
+      - CELERY_RESULT_BACKEND=redis://redis:6379/11
+      - DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nekazari
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=terrain-tilesets
       - GDAL_CACHEMAX=2048
       - GDAL_NUM_THREADS=ALL_CPUS
-    deploy:
-      resources:
-        limits:
-          memory: 4G # Enforce memory limits to prevent complete host starvation
     depends_on:
       - redis
+      - postgresql
     networks:
       - elevation-net
 
-  # Redis for Celery Queue and Results
   redis:
     image: redis:7-alpine
     ports:
@@ -55,15 +54,16 @@ services:
     networks:
       - elevation-net
 
-  # Nginx representing the MinIO/Static Bucket CDN
-  # Servers the pre-computed .terrain.gz files securely to Cesium
-  terrain-cdn:
-    image: nginx:alpine
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nekazari
     ports:
-      - "9000:80"
+      - "5432:5432"
     volumes:
-      - ./backend/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - terrain_data:/usr/share/nginx/html:ro
+      - pgdata:/var/lib/postgresql/data
     networks:
       - elevation-net
 
@@ -72,6 +72,4 @@ networks:
     driver: bridge
 
 volumes:
-  # Shared volume representing the output directory (/tmp/terrain_output)
-  # In a production environment, this is replaced by MinIO S3 syncing
-  terrain_data:
+  pgdata:

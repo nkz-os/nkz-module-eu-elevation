@@ -22,7 +22,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - uvicorn
             - "app.main:app"
@@ -49,12 +49,13 @@ spec:
               value: "minio-service:9000"
             - name: MINIO_BUCKET
               value: "terrain-tilesets"
-            - name: DATABASE_URL
-              value: "postgresql://nekazari:nekazari@postgresql:5432/nekazari"
           envFrom:
             - secretRef:
                 name: minio-secret
                 optional: true
+            - secretRef:
+                name: elevation-db-secret
+                optional: false
           resources:
             requests:
               memory: "128Mi"
@@ -86,7 +87,7 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - celery
             - "-A"
@@ -113,6 +114,9 @@ spec:
             - secretRef:
                 name: minio-secret
                 optional: true
+            - secretRef:
+                name: elevation-db-secret
+                optional: false
           resources:
             requests:
               memory: "512Mi"

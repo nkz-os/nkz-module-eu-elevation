@@ -1,6 +1,8 @@
 """Models package for EU Elevation module."""
-from app.models.elevation_models import ElevationLayer
+from app.models.elevation_models import ElevationLayer, CustomDemSource, TenantTerrainPreferences
 
 __all__ = [
-    "ElevationLayer"
+    "ElevationLayer",
+    "CustomDemSource",
+    "TenantTerrainPreferences",
 ]

@@ -11,8 +11,8 @@ from typing import Optional
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # Database (PostGIS)
-    DATABASE_URL: str = "postgresql://postgres:postgres@postgresql:5432/nekazari"
+    # Database (PostgreSQL) — NO hardcoded credentials (public repo)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     # Redis (for Celery task queue)
     REDIS_URL: str = "redis://redis:6379/0"

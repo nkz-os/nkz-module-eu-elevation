@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Globe, Map, Settings, Key, Link as LinkIcon, Trash2, Plus, RefreshCw, Layers, Info } from 'lucide-react';
+import { Globe, Map, Settings, Key, Link as LinkIcon } from 'lucide-react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 
 export interface ElevationLayer {

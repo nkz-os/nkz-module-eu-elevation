@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
-import { createTerrainProvider, TerrainProviderConfig, TerrainProviderType } from '../utils/terrainFactory';
+import { createTerrainProvider, TerrainProviderConfig, TerrainProviderType } from '../../utils/terrainFactory';
 
 declare const Cesium: any;
 

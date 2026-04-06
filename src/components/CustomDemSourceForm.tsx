@@ -137,7 +137,7 @@ export const CustomDemSourceForm: React.FC = () => {
                                 <div className="flex items-center gap-2">
                                     <h3 className="font-medium text-gray-800">{source.name}</h3>
                                     {source.has_auth && (
-                                        <Key className="w-3 h-3 text-amber-500" title="Has auth configured" />
+                                        <Key className="w-3 h-3 text-amber-500" />
                                     )}
                                 </div>
                                 <p className="text-xs text-gray-500 font-mono truncate">{source.service_url}</p>

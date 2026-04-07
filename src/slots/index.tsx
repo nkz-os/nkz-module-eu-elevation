@@ -1,6 +1,7 @@
 import React from 'react';
 import { ElevationAdminControl } from '../components/slots/ElevationAdminControl';
 import { ElevationLayer } from '../components/slots/ElevationLayer';
+import { CorineLandCoverToggle } from '../components/slots/CorineLandCoverToggle';
 
 const MODULE_ID = 'nkz-module-eu-elevation';
 
@@ -25,9 +26,15 @@ export type ModuleViewerSlots = Record<SlotType, SlotWidgetDefinition[]> & {
 
 /**
  * Elevation Module Slots Configuration
+ *
+ * Slot allocation:
+ * - map-layer: Injects terrain provider into Cesium (invisible to user)
+ * - layer-toggle: Simple CORINE Land Cover toggle with opacity slider
+ * - dashboard-widget: Full terrain configuration panel (providers, BYOK, ingestion)
+ * - context-panel: Empty (avoid duplication with dashboard-widget)
  */
 export const moduleSlots: ModuleViewerSlots = {
-  // 1. Inject the Terrain Provider + CLC WMS layer into the Cesium map
+  // 1. Inject the Terrain Provider into the Cesium map
   'map-layer': [
     {
       id: 'elevation-cesium-layer',
@@ -38,18 +45,18 @@ export const moduleSlots: ModuleViewerSlots = {
     }
   ],
 
-  // 2. Layer toggle for CORINE Land Cover in the layers panel
+  // 2. Simple CORINE Land Cover toggle with opacity slider
   'layer-toggle': [
     {
       id: 'clc-layer-toggle',
       moduleId: MODULE_ID,
-      component: 'ElevationAdminControl',
+      component: 'CorineLandCoverToggle',
       priority: 30,
-      localComponent: ElevationAdminControl
+      localComponent: CorineLandCoverToggle
     }
   ],
 
-  // 3. Add the Admin Panel to the dashboard
+  // 3. Full terrain configuration panel (providers, BYOK, ingestion)
   'dashboard-widget': [
     {
       id: 'elevation-admin-control',
@@ -60,21 +67,10 @@ export const moduleSlots: ModuleViewerSlots = {
     }
   ],
 
-  // 4. Add to Context Panel for Unified Viewer access
-  'context-panel': [
-    {
-      id: 'elevation-context-control',
-      moduleId: MODULE_ID,
-      component: 'ElevationAdminControl',
-      priority: 50,
-      localComponent: ElevationAdminControl
-    }
-  ],
-
-  // Unused slots
+  // Unused — avoids duplication with dashboard-widget
+  'context-panel': [],
   'bottom-panel': [],
   'entity-tree': []
 };
 
-// Export as default for convenience
 export default moduleSlots;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Globe, Map, Settings, Key, Link as LinkIcon } from 'lucide-react';
+import { Globe, Settings, Key, Link as LinkIcon } from 'lucide-react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 
 export interface ElevationLayer {
@@ -48,7 +48,6 @@ export const ElevationAdminControl: React.FC = () => {
     const [layers, setLayers] = useState<ElevationLayer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
-    const [clcEnabled, setCLCEnabled] = useState(false);
 
     // Settings form state
     const [cesiumToken, setCesiumToken] = useState('');
@@ -56,9 +55,6 @@ export const ElevationAdminControl: React.FC = () => {
     const [customUrl, setCustomUrl] = useState('');
 
     useEffect(() => {
-        const savedCLC = localStorage.getItem('nkz_clc_enabled') === 'true';
-        setCLCEnabled(savedCLC);
-
         Promise.all([
             apiClient.get<TerrainPreference>('/preferences').catch(() => null),
             apiClient.get<TerrainProviderInfo[]>('/providers').catch(() => []),
@@ -96,13 +92,6 @@ export const ElevationAdminControl: React.FC = () => {
         } catch (err) {
             console.error('Failed to save tokens:', err);
         }
-    };
-
-    const handleCLCToggle = () => {
-        const newState = !clcEnabled;
-        setCLCEnabled(newState);
-        localStorage.setItem('nkz_clc_enabled', String(newState));
-        window.dispatchEvent(new CustomEvent('nkz.clc.toggle', { detail: { enabled: newState } }));
     };
 
     return (
@@ -191,27 +180,6 @@ export const ElevationAdminControl: React.FC = () => {
                     </button>
                 </div>
             )}
-
-            {/* CORINE Land Cover Toggle */}
-            <div className="border-t border-gray-100 pt-3 mt-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Map className="w-4 h-4 text-emerald-600" />
-                        <div>
-                            <span className="text-sm font-medium text-gray-700">{t('corineLandCover', 'CORINE Land Cover')}</span>
-                            <p className="text-xs text-gray-400">{t('corineDescription', 'EU/UK land use classification (2018)')}</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={handleCLCToggle}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 ${clcEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
-                        role="switch"
-                        aria-checked={clcEnabled}
-                    >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${clcEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                </div>
-            </div>
 
             {/* Settings Modal */}
             {showSettings && (

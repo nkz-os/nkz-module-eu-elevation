@@ -5,7 +5,6 @@ Loads settings from environment variables. No hardcoded defaults for secrets.
 
 import os
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):

@@ -5,7 +5,6 @@ Handles uploading and managing terrain tiles and related assets.
 """
 
 import logging
-import os
 from typing import Optional, BinaryIO
 from pathlib import Path
 import boto3

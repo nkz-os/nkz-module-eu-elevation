@@ -9,7 +9,7 @@ Usage:
     from app.dem_sources import DEM_SOURCES, get_source, get_sources_for_bbox
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

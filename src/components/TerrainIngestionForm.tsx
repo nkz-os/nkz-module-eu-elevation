@@ -21,6 +21,13 @@ export const TerrainIngestionForm: React.FC = () => {
     const [localFile, setLocalFile] = useState<File | null>(null);
     const [status, setStatus] = useState<{ message: string; isError: boolean } | null>(null);
     const [loading, setLoading] = useState(false);
+    const [customSources, setCustomSources] = useState<any[]>([]);
+
+    useEffect(() => {
+        apiClient.get('/api/elevation/sources/custom').then((res: any) => {
+            if (Array.isArray(res)) setCustomSources(res);
+        }).catch(console.error);
+    }, [apiClient]);
 
     // WebSocket Progress State
     const [progress, setProgress] = useState<{ percent: number, message: string } | null>(null);
@@ -208,16 +215,39 @@ export const TerrainIngestionForm: React.FC = () => {
                 </div>
 
                 {activeTab === 'remote' ? (
-                    <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-600">{t('sourceUrlsLabel', 'Source URLs (One per line)')}</label>
-                        <textarea
-                            value={urls}
-                            onChange={(e) => setUrls(e.target.value)}
-                            placeholder="https://server/wcs?request=GetCoverage..."
-                            rows={3}
-                            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow font-mono"
-                            disabled={loading && progress !== null}
-                        />
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">{t('selectCustomSource', 'Use Existing Custom Source')}</label>
+                            <select
+                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800 text-sm focus:border-blue-500 outline-none"
+                                onChange={(e) => {
+                                    const src = customSources.find(s => s.id === e.target.value);
+                                    if (src) {
+                                        setCountryCode(src.country_code);
+                                        if (src.bbox_minx != null) {
+                                            setBbox(`${src.bbox_minx}, ${src.bbox_miny}, ${src.bbox_maxx}, ${src.bbox_maxy}`);
+                                        }
+                                        setUrls(src.service_url);
+                                    }
+                                }}
+                            >
+                                <option value="">-- {t('selectSourceOptional', 'Select a saved source (optional)')} --</option>
+                                {customSources.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name} ({s.country_code})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">{t('sourceUrlsLabel', 'Source URLs (One per line)')}</label>
+                            <textarea
+                                value={urls}
+                                onChange={(e) => setUrls(e.target.value)}
+                                placeholder="https://server/wcs?request=GetCoverage..."
+                                rows={3}
+                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow font-mono"
+                                disabled={loading && progress !== null}
+                            />
+                        </div>
                     </div>
                 ) : (
                     <div className="space-y-1">

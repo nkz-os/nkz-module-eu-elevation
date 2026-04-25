@@ -10,7 +10,6 @@ SOTA compliant with Nekazari platform:
 """
 
 import os
-import time
 from typing import Optional
 
 import httpx
@@ -27,7 +26,6 @@ KEYCLOAK_PUBLIC_URL = os.getenv("KEYCLOAK_PUBLIC_URL", "https://auth.robotika.cl
 JWT_ISSUER = os.getenv("JWT_ISSUER", f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "account")
 JWKS_URL = os.getenv("JWKS_URL", f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs")
-TRUST_API_GATEWAY = os.getenv("TRUST_API_GATEWAY", "true").lower() == "true"
 SYSTEM_GATEWAY_ROLE = os.getenv("SYSTEM_GATEWAY_ROLE", "urn:nkz:role:system-gateway")
 
 security = HTTPBearer(auto_error=False)
@@ -107,18 +105,6 @@ async def get_current_user(
 ) -> TokenPayload:
     """Validate JWT and return typed payload."""
     token = _extract_token(request, credentials)
-
-    # ADR 003 / Gateway trust: decode without signature when behind api-gateway
-    if TRUST_API_GATEWAY and request.headers.get("X-Tenant-ID"):
-        try:
-            payload = jwt.get_unverified_claims(token)
-            if payload.get("exp", 0) < time.time():
-                raise HTTPException(status_code=401, detail="Token expired")
-            return TokenPayload(payload)
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
     # Full JWKS validation
     try:

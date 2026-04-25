@@ -61,7 +61,7 @@ INSERT INTO marketplace_modules (
                 {"id": "elevation-cesium-layer", "component": "ElevationLayer", "priority": 10}
             ],
             "layer-toggle": [
-                {"id": "clc-layer-toggle", "component": "ElevationAdminControl", "priority": 30}
+                {"id": "clc-layer-toggle", "component": "CorineLandCoverToggle", "priority": 30}
             ],
             "dashboard-widget": [
                 {"id": "elevation-admin-control", "component": "ElevationAdminControl", "priority": 50}

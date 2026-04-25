@@ -28,7 +28,6 @@ from celery import shared_task
 try:
     import rasterio
     from rasterio.windows import from_bounds
-    from rasterio.warp import transform_bounds
     import quantized_mesh_encoder
     from pydelatin import Delatin
     HAS_ENCODERS = True
@@ -376,7 +375,7 @@ def process_dem_to_quantized_mesh(
         raise RuntimeError("C++ encoders (rasterio, pydelatin, quantized-mesh-encoder) not available. "
                            "This task must run inside the Docker worker image.")
 
-    source_label = "FALLBACK Copernicus GLO-30 (30m)" if _is_fallback else f"primary source"
+    source_label = "FALLBACK Copernicus GLO-30 (30m)" if _is_fallback else "primary source"
     logger.info(f"[{country_code}] Starting pipeline ({source_label}) BBOX: {bbox}, zoom {zoom_min}-{zoom_max}")
 
     if _is_fallback:
@@ -540,7 +539,7 @@ def process_dem_to_quantized_mesh(
         self.update_state(state='SUCCESS', meta={
             'progress': 100,
             'message': 'Pipeline completed successfully.' + (
-                f' (⚠️ Using fallback source: Copernicus GLO-30, 30m)' if _is_fallback else ''
+                ' (⚠️ Using fallback source: Copernicus GLO-30, 30m)' if _is_fallback else ''
             ),
             **({"fallback_used": True, "fallback_reason": _original_error} if _is_fallback else {})
         })

@@ -22,9 +22,6 @@ export interface TerrainTokens {
     provider_type: string;
 }
 
-const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
-const CLC_WMS_LAYERS = '0';
-
 export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     const { t } = useTranslation('eu-elevation');
     const { getToken, getTenantId } = useAuth();
@@ -36,7 +33,6 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     }), [getToken, getTenantId]);
 
     const activeProviderRef = useRef<any>(null);
-    const clcLayerRef = useRef<any>(null);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
     const layersRef = useRef<ElevationLayerConfig[]>([]);
     const tokensRef = useRef<TerrainTokens | null>(null);
@@ -104,33 +100,6 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
         }
     };
 
-    const addCLCLayer = useCallback(() => {
-        if (!viewer || clcLayerRef.current) return;
-        try {
-            const clcProvider = new Cesium.WebMapServiceImageryProvider({
-                url: CLC_WMS_URL,
-                layers: CLC_WMS_LAYERS,
-                parameters: { transparent: true, format: 'image/png' },
-                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0),
-                credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
-            });
-            clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
-            clcLayerRef.current.alpha = 0.6;
-        } catch (error) {
-            console.error('[Elevation] Failed to add CLC layer:', error);
-        }
-    }, [viewer]);
-
-    const removeCLCLayer = useCallback(() => {
-        if (!viewer || !clcLayerRef.current) return;
-        try {
-            viewer.imageryLayers.remove(clcLayerRef.current, true);
-            clcLayerRef.current = null;
-        } catch (error) {
-            console.error('[Elevation] Failed to remove CLC layer:', error);
-        }
-    }, [viewer]);
-
     useEffect(() => {
         if (!viewer?.scene) return;
 
@@ -157,15 +126,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             }
         };
 
-        const onCLCToggle = (e: any) => {
-            if (e.detail?.enabled) addCLCLayer(); else removeCLCLayer();
-        };
-
-        const savedCLC = localStorage.getItem('nkz_clc_enabled') === 'true';
-        if (savedCLC) addCLCLayer();
-
         window.addEventListener('nkz.elevation.change', onPrefChange);
-        window.addEventListener('nkz.clc.toggle', onCLCToggle);
         viewer.camera.moveEnd.addEventListener(() => {
             if (currentModeRef.current === 'auto') {
                 applyPreference(tokensRef.current || { provider_type: 'off' }, layersRef.current);
@@ -174,8 +135,6 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
 
         return () => {
             window.removeEventListener('nkz.elevation.change', onPrefChange);
-            window.removeEventListener('nkz.clc.toggle', onCLCToggle);
-            removeCLCLayer();
             if (viewer && !viewer.isDestroyed()) {
                 if (viewer.scene.globe.tileLoadProgressEvent) {
                     viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileLoadProgress);

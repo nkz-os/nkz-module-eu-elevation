@@ -8,7 +8,7 @@ Models:
 """
 
 import uuid
-from sqlalchemy import Column, String, Float, Boolean, DateTime, Text, Integer
+from sqlalchemy import Column, String, Float, Boolean, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.database import Base

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from app.middleware.auth import require_auth, get_tenant_id
 from app.tasks.elevation_tasks import process_dem_to_quantized_mesh, process_local_dem_to_quantized_mesh
-from app.dem_sources import get_source, get_all_sources, get_sources_for_bbox, DEMSource
+from app.dem_sources import get_source, get_all_sources
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models.elevation_models import ElevationLayer, CustomDemSource, TenantTerrainPreferences
@@ -223,24 +223,6 @@ async def list_dem_sources(current_user: dict = Depends(require_auth)):
     ]
 
 
-@router.get("/sources/{country_code}", response_model=DEMSourceResponse)
-async def get_dem_source(country_code: str, current_user: dict = Depends(require_auth)):
-    src = get_source(country_code)
-    if not src:
-        raise HTTPException(status_code=404, detail=f"No DEM source for '{country_code}'")
-    return DEMSourceResponse(
-        country_code=src.country_code, country_name=src.country_name,
-        service_url=src.service_url, service_type=src.service_type,
-        format=src.format, resolution=src.resolution, bbox=src.bbox,
-        layer_name=src.layer_name, notes=src.notes, fallback=src.fallback,
-        requires_preprocessing=src.requires_preprocessing,
-    )
-
-
-# ============================================================================
-# Custom DEM Sources (user-registered, Tier 1)
-# ============================================================================
-
 @router.get("/sources/custom", response_model=List[CustomDemSourceResponse])
 async def list_custom_sources(
     db: Session = Depends(get_db),
@@ -265,6 +247,20 @@ async def list_custom_sources(
         )
         result.append(resp)
     return result
+
+
+@router.get("/sources/{country_code}", response_model=DEMSourceResponse)
+async def get_dem_source(country_code: str, current_user: dict = Depends(require_auth)):
+    src = get_source(country_code)
+    if not src:
+        raise HTTPException(status_code=404, detail=f"No DEM source for '{country_code}'")
+    return DEMSourceResponse(
+        country_code=src.country_code, country_name=src.country_name,
+        service_url=src.service_url, service_type=src.service_type,
+        format=src.format, resolution=src.resolution, bbox=src.bbox,
+        layer_name=src.layer_name, notes=src.notes, fallback=src.fallback,
+        requires_preprocessing=src.requires_preprocessing,
+    )
 
 
 @router.post("/sources/custom", response_model=CustomDemSourceResponse, status_code=status.HTTP_201_CREATED)
@@ -551,14 +547,15 @@ async def list_providers(
 
     # Custom ingested layers
     layers = db.query(ElevationLayer).filter(
-        ElevationLayer.tenant_id == tenant_id, ElevationLayer.is_active == True,
+        ElevationLayer.tenant_id == tenant_id, ElevationLayer.is_active,
     ).all()
     for layer in layers:
+        is_layer_active = bool(active_type == "custom" and prefs and prefs.custom_terrain_url == layer.url)
         providers.append(TerrainProviderInfo(
             id=f"layer_{layer.id}", name=layer.name, type="custom",
             description=f"Custom terrain: {layer.url}",
             resolution="Variable", coverage="Custom BBOX",
-            requires_token=False, is_active=False,
+            requires_token=False, is_active=is_layer_active,
         ))
 
     return providers

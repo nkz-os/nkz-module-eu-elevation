@@ -167,6 +167,24 @@ export const ElevationAdminControl: React.FC = () => {
                         </button>
                     ))}
 
+                    {/* Auto */}
+                    <button
+                        onClick={() => handleProviderChange('auto')}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all mb-2 ${
+                            prefs?.provider_type === 'auto'
+                                ? 'bg-blue-50 border border-blue-200 text-blue-800'
+                                : 'bg-gray-50 border border-gray-100 text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <span className="font-medium">{t('autoMode', 'Auto (Camera Match)')}</span>
+                            {prefs?.provider_type === 'auto' && (
+                                <span className="text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded">{t('active', 'Active')}</span>
+                            )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">{t('autoModeDesc', 'Automatically selects best custom terrain based on view')}</div>
+                    </button>
+
                     {/* Off */}
                     <button
                         onClick={() => handleProviderChange('off')}

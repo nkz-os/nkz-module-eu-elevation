@@ -8,11 +8,11 @@ FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install Python 3.12 and build tools for C++ extensions (tinytiles/quantized-mesh-encoder)
+# Install Python 3 and build tools for C++ extensions (tinytiles/quantized-mesh-encoder)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-dev \
-    python3.12-venv \
+    python3 \
+    python3-dev \
+    python3-venv \
     python3-pip \
     build-essential \
     curl \
@@ -20,14 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set default python
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python
-
 # Create working directory
 WORKDIR /app
 
 # Use a virtual environment with system site packages to avoid PEP 668 conflicts
-RUN python -m venv /opt/venv --system-site-packages
+RUN python3 -m venv /opt/venv --system-site-packages
 ENV PATH="/opt/venv/bin:$PATH"
 # Install Python dependencies (including quantized-mesh-encoder which needs C++ compilation)
 # Note: GDAL Python bindings must match the system GDAL version exactly

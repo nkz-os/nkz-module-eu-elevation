@@ -101,18 +101,10 @@ export const CorineLandCoverToggle: React.FC<{ viewer?: any }> = ({ viewer }) =>
     }, [viewer]);
 
     useEffect(() => {
-        if (enabled && viewer && !clcLayerRef.current) {
-            addCLCLayer();
-        } else if (!enabled && clcLayerRef.current) {
-            removeCLCLayer();
-        }
-    }, [enabled, viewer, addCLCLayer, removeCLCLayer]);
-
-    useEffect(() => {
-        if (clcLayerRef.current) {
-            clcLayerRef.current.alpha = opacity;
-        }
-    }, [opacity]);
+        window.dispatchEvent(new CustomEvent('nkz.clc.toggle', { 
+            detail: { enabled, opacity } 
+        }));
+    }, [enabled, opacity]);
 
     useEffect(() => {
         const saved = localStorage.getItem('nkz_clc_enabled') === 'true';
@@ -127,13 +119,6 @@ export const CorineLandCoverToggle: React.FC<{ viewer?: any }> = ({ viewer }) =>
         localStorage.setItem('nkz_clc_enabled', String(enabled));
         localStorage.setItem('nkz_clc_opacity', String(opacity));
     }, [enabled, opacity]);
-
-    useEffect(() => {
-        if (!viewer) return;
-        return () => {
-            removeCLCLayer();
-        };
-    }, [viewer, removeCLCLayer]);
 
     return (
         <div className="flex flex-col gap-1.5">

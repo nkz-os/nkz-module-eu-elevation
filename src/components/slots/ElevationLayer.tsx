@@ -22,6 +22,9 @@ export interface TerrainTokens {
     provider_type: string;
 }
 
+const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
+const CLC_WMS_LAYERS = '0';
+
 export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     const { t } = useTranslation('eu-elevation');
     const { getToken, getTenantId } = useAuth();
@@ -33,6 +36,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     }), [getToken, getTenantId]);
 
     const activeProviderRef = useRef<any>(null);
+    const clcLayerRef = useRef<any>(null);
     const [isLoadingTiles, setIsLoadingTiles] = useState(false);
     const layersRef = useRef<ElevationLayerConfig[]>([]);
     const tokensRef = useRef<TerrainTokens | null>(null);
@@ -100,6 +104,39 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
         }
     };
 
+    const addCLCLayer = useCallback((opacity: number = 0.6) => {
+        if (!viewer || clcLayerRef.current) return;
+        try {
+            const clcProvider = new Cesium.WebMapServiceImageryProvider({
+                url: CLC_WMS_URL,
+                layers: CLC_WMS_LAYERS,
+                parameters: { transparent: true, format: 'image/png' },
+                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0),
+                credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
+            });
+            clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
+            clcLayerRef.current.alpha = opacity;
+        } catch (error) {
+            console.error('[Elevation] Failed to add CLC layer:', error);
+        }
+    }, [viewer]);
+
+    const removeCLCLayer = useCallback(() => {
+        if (!viewer || !clcLayerRef.current) return;
+        try {
+            viewer.imageryLayers.remove(clcLayerRef.current, true);
+            clcLayerRef.current = null;
+        } catch (error) {
+            console.error('[Elevation] Failed to remove CLC layer:', error);
+        }
+    }, [viewer]);
+
+    const updateCLCOpacity = useCallback((opacity: number) => {
+        if (clcLayerRef.current) {
+            clcLayerRef.current.alpha = opacity;
+        }
+    }, []);
+
     useEffect(() => {
         if (!viewer?.scene) return;
 
@@ -126,7 +163,24 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
             }
         };
 
+        const onCLCToggle = (e: any) => {
+            const { enabled, opacity } = e.detail;
+            if (enabled) {
+                if (!clcLayerRef.current) addCLCLayer(opacity);
+                else updateCLCOpacity(opacity);
+            } else {
+                removeCLCLayer();
+            }
+        };
+
         window.addEventListener('nkz.elevation.change', onPrefChange);
+        window.addEventListener('nkz.clc.toggle', onCLCToggle);
+
+        // Sync initial state from localStorage
+        const savedCLC = localStorage.getItem('nkz_clc_enabled') === 'true';
+        const savedOpacity = parseFloat(localStorage.getItem('nkz_clc_opacity') || '0.6');
+        if (savedCLC) addCLCLayer(savedOpacity);
+
         viewer.camera.moveEnd.addEventListener(() => {
             if (currentModeRef.current === 'auto') {
                 applyPreference(tokensRef.current || { provider_type: 'off' }, layersRef.current);
@@ -135,6 +189,8 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
 
         return () => {
             window.removeEventListener('nkz.elevation.change', onPrefChange);
+            window.removeEventListener('nkz.clc.toggle', onCLCToggle);
+            removeCLCLayer();
             if (viewer && !viewer.isDestroyed()) {
                 if (viewer.scene.globe.tileLoadProgressEvent) {
                     viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileLoadProgress);
@@ -142,7 +198,7 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
                 viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
             }
         };
-    }, [viewer]);
+    }, [viewer, addCLCLayer, removeCLCLayer, updateCLCOpacity]);
 
     return (
         <div className={`absolute top-6 left-1/2 transform -translate-x-1/2 bg-gray-900/90 text-gray-100 px-4 py-2 rounded-full shadow-lg text-sm flex items-center gap-2 z-50 backdrop-blur-md pointer-events-none transition-opacity duration-500 ease-in-out ${isLoadingTiles ? 'opacity-100' : 'opacity-0'}`}>

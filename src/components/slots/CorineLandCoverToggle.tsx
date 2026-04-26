@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { useViewerOptional } from '@nekazari/sdk';
 
 declare const Cesium: any;
-
-const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
-const CLC_WMS_LAYERS = '0';
 
 const CLC_CATEGORIES = [
     { group: 'Artificial surfaces', color: '#E6004D', items: [
@@ -63,44 +61,21 @@ const CLC_CATEGORIES = [
     ]},
 ];
 
-export const CorineLandCoverToggle: React.FC<{ viewer?: any }> = ({ viewer }) => {
+export const CorineLandCoverToggle: React.FC = () => {
+    const viewerContext = useViewerOptional();
+    const viewer = viewerContext?.cesiumViewer;
+
+    useEffect(() => {
+        console.log('[CorineToggle] Component mounted, viewer present:', !!viewer);
+    }, [viewer]);
+
     const [enabled, setEnabled] = useState(false);
     const [opacity, setOpacity] = useState(0.6);
     const [showLegend, setShowLegend] = useState(false);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-    const clcLayerRef = useRef<any>(null);
-    const opacityRef = useRef(opacity);
-
-    useEffect(() => { opacityRef.current = opacity; }, [opacity]);
-
-    const addCLCLayer = useCallback(() => {
-        if (!viewer || clcLayerRef.current) return;
-        try {
-            const clcProvider = new Cesium.WebMapServiceImageryProvider({
-                url: CLC_WMS_URL,
-                layers: CLC_WMS_LAYERS,
-                parameters: { transparent: true, format: 'image/png' },
-                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0),
-                credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
-            });
-            clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
-            clcLayerRef.current.alpha = opacityRef.current;
-        } catch {
-            // Viewer not ready
-        }
-    }, [viewer]);
-
-    const removeCLCLayer = useCallback(() => {
-        if (!viewer || !clcLayerRef.current) return;
-        try {
-            viewer.imageryLayers.remove(clcLayerRef.current, true);
-            clcLayerRef.current = null;
-        } catch {
-            // Layer already removed
-        }
-    }, [viewer]);
 
     useEffect(() => {
+        console.log('[CorineToggle] Dispatching toggle event:', { enabled, opacity });
         window.dispatchEvent(new CustomEvent('nkz.clc.toggle', { 
             detail: { enabled, opacity } 
         }));
@@ -203,5 +178,3 @@ export const CorineLandCoverToggle: React.FC<{ viewer?: any }> = ({ viewer }) =>
         </div>
     );
 };
-
-export default CorineLandCoverToggle;

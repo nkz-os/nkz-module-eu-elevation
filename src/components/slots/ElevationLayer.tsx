@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
+import { useAuth, NKZClient, useTranslation, useViewerOptional } from '@nekazari/sdk';
 import { createTerrainProvider, TerrainProviderConfig, TerrainProviderType } from '../../utils/terrainFactory';
 
 declare const Cesium: any;
@@ -25,9 +25,15 @@ export interface TerrainTokens {
 const CLC_WMS_URL = 'https://image.discomap.eea.europa.eu/arcgis/services/Corine/CLC2018_WM/MapServer/WMSServer';
 const CLC_WMS_LAYERS = '0';
 
-export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
+export const ElevationLayer: React.FC = () => {
     const { t } = useTranslation('eu-elevation');
     const { getToken, getTenantId } = useAuth();
+    const viewerContext = useViewerOptional();
+    const viewer = viewerContext?.cesiumViewer;
+
+    useEffect(() => {
+        console.log('[ElevationLayer] Component mounted, viewer present:', !!viewer);
+    }, [viewer]);
 
     const apiClient = React.useMemo(() => new NKZClient({
         baseUrl: '/api/elevation',
@@ -105,19 +111,22 @@ export const ElevationLayer: React.FC<{ viewer?: any }> = ({ viewer }) => {
     };
 
     const addCLCLayer = useCallback((opacity: number = 0.6) => {
-        if (!viewer || clcLayerRef.current) return;
+        if (!viewer || clcLayerRef.current) {
+            console.log('[ElevationLayer] Cannot add CLC layer:', { viewer: !!viewer, hasRef: !!clcLayerRef.current });
+            return;
+        }
         try {
+            console.log('[ElevationLayer] Adding CLC layer with opacity:', opacity);
             const clcProvider = new Cesium.WebMapServiceImageryProvider({
                 url: CLC_WMS_URL,
                 layers: CLC_WMS_LAYERS,
                 parameters: { transparent: true, format: 'image/png' },
-                rectangle: Cesium.Rectangle.fromDegrees(-32.0, 27.0, 45.0, 72.0),
                 credit: new Cesium.Credit('© EEA Copernicus Land Monitoring Service — CORINE Land Cover 2018'),
             });
             clcLayerRef.current = viewer.imageryLayers.addImageryProvider(clcProvider);
             clcLayerRef.current.alpha = opacity;
         } catch (error) {
-            console.error('[Elevation] Failed to add CLC layer:', error);
+            console.error('[ElevationLayer] Failed to add CLC layer:', error);
         }
     }, [viewer]);
 

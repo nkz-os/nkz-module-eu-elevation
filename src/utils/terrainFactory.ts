@@ -109,21 +109,61 @@ function createCustomTerrain(url?: string): any {
 }
 
 function createEuropeCopernicusTerrain(config: TerrainProviderConfig): any {
-    // Copernicus GLO-30 tiles — self-hosted on platform MinIO (no Cesium Ion token needed).
-    // If tiles aren't ingested yet, falls back to Cesium World Terrain (global, free).
-    const url = config.europeCopernicusUrl;
-    if (!url) {
-        console.warn('[Elevation] Europe Copernicus URL missing, falling back to Cesium World Terrain');
-        return createCesiumWorldTerrain(config.cesiumIonToken);
-    }
-    try {
-        return new Cesium.CesiumTerrainProvider({
-            url,
-            requestVertexNormals: true,
-            requestWaterMask: false,
-        });
-    } catch (error) {
-        console.warn('[Elevation] Copernicus terrain failed, falling back to Cesium World Terrain:', error);
-        return createCesiumWorldTerrain(config.cesiumIonToken);
-    }
+    // On-demand sovereign terrain: Copernicus GLO-30 served live by the module
+    // backend (GET /api/elevation/heightmap/{z}/{x}/{y}.png, MinIO write-through
+    // cache — only viewed tiles are stored). Zooms below the module window use
+    // the AWS Open Data terrarium fallback (globe view; detail is irrelevant).
+    // Legacy bulk pre-ingested quantized-mesh tilesets are no longer required.
+    // Legacy URL (/api/elevation/terrain/EU/layer.json) is reduced to its origin;
+    // same-origin '' by default. The heightmap path is built by the provider.
+    const idx = config.europeCopernicusUrl?.indexOf('/api/elevation') ?? -1;
+    const base = idx >= 0
+        ? config.europeCopernicusUrl!.slice(0, idx)
+        : (config.europeCopernicusUrl || '').replace(/\/+$/, '');
+    return createOnDemandHeightmapTerrain(base);
+}
+
+// ── On-demand heightmap provider ─────────────────────────────────────────────
+
+const ON_DEMAND_MIN_ZOOM = 6; // must match backend MIN_ZOOM (services/heightmap.py)
+const HEIGHTMAP_GRID = 65;    // heightmap samples per tile edge for Cesium
+const TERRARIUM_FALLOFF = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium';
+
+function createOnDemandHeightmapTerrain(baseUrl: string): any {
+    // baseUrl: same-origin '' by default (module API behind the platform
+    // gateway) or an explicit prefix passed via europeCopernicusUrl.
+    let ctx: CanvasRenderingContext2D | null = null;
+
+    return new Cesium.CustomHeightmapTerrainProvider({
+        width: HEIGHTMAP_GRID,
+        height: HEIGHTMAP_GRID,
+        callback: async (x: number, y: number, level: number): Promise<Float32Array> => {
+            // Low zooms (globe view): open-data global fallback, browser-direct.
+            const url = level < ON_DEMAND_MIN_ZOOM
+                ? `${TERRARIUM_FALLOFF}/${level}/${x}/${y}.png`
+                : `${baseUrl}/api/elevation/heightmap/${level}/${x}/${y}.png`;
+            // fetch default credentials ('same-origin') sends the session
+            // cookie to the module endpoint while leaving the AWS fallback
+            // cookie-free (S3 CORS does not allow credentials).
+            const res = await fetch(url);
+            if (!res.ok) {
+                throw new Error(`heightmap tile ${level}/${x}/${y} failed: HTTP ${res.status}`);
+            }
+            const bitmap = await createImageBitmap(await res.blob());
+            if (!ctx) {
+                const canvas = document.createElement('canvas');
+                canvas.width = HEIGHTMAP_GRID;
+                canvas.height = HEIGHTMAP_GRID;
+                ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+            }
+            ctx.drawImage(bitmap, 0, 0, HEIGHTMAP_GRID, HEIGHTMAP_GRID);
+            const data = ctx.getImageData(0, 0, HEIGHTMAP_GRID, HEIGHTMAP_GRID).data;
+            bitmap.close();
+            const heights = new Float32Array(HEIGHTMAP_GRID * HEIGHTMAP_GRID);
+            for (let i = 0, j = 0; i < heights.length; i++, j += 4) {
+                heights[i] = data[j] * 256 + data[j + 1] + data[j + 2] / 256 - 32768;
+            }
+            return heights;
+        },
+    });
 }

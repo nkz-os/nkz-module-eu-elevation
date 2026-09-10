@@ -73,7 +73,7 @@ BUILTIN_PROVIDERS = [
         "id": "builtin_europe_copernicus",
         "name": "Copernicus EU Terrain",
         "type": "europe_copernicus",
-        "description": "Free 30m terrain via Cesium World Terrain — no API key needed. Self-hosted regional tiles optional.",
+        "description": "Copernicus GLO-30 terrain served on demand by the module backend — no ingestion, no token. Only viewed tiles are cached.",
         "resolution": "30m",
         "coverage": "EU + UK (Global fallback)",
         "requires_token": False,
@@ -1395,6 +1395,62 @@ async def get_terrain_tile(
 
     # ── No tile found anywhere ────────────────────────────
     return Response(status_code=204)
+
+
+@router.get("/heightmap/{z}/{x}/{y}.png")
+def get_heightmap_tile(z: int, x: int, y: int):
+    """Serve a terrarium-encoded heightmap PNG (WebMercator z/x/y), on demand.
+
+    Sovereign replacement for the bulk terrain pre-ingestion: the tile is
+    generated live from the public Copernicus GLO-30 S3 COGs via windowed
+    reads and cached write-through to MinIO — only tiles actually viewed
+    are ever stored.
+
+    Served zoom window is [MIN_ZOOM, MAX_ZOOM] (see services/heightmap.py).
+    Below MIN_ZOOM the COG cover explodes; the frontend delegates those
+    levels to a global open-data fallback.
+
+    Sync def on purpose: rasterio/PIL are blocking; FastAPI runs this in
+    the threadpool.
+    """
+    from app.services.heightmap import (
+        MAX_ZOOM,
+        MIN_ZOOM,
+        generate_heightmap_png,
+        get_cached_tile,
+        store_tile,
+    )
+
+    n = 2 ** z
+    if not (MIN_ZOOM <= z <= MAX_ZOOM) or not (0 <= x < n) or not (0 <= y < n):
+        raise HTTPException(status_code=404, detail="heightmap zoom/x/y out of supported range")
+
+    cached = get_cached_tile(z, x, y)
+    if cached is not None:
+        return Response(
+            content=cached,
+            media_type="image/png",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=2592000, immutable",
+            },
+        )
+
+    png = generate_heightmap_png(z, x, y)
+    if png is None:
+        # Too many covering COGs or no data — signal unavailability so the
+        # client can fall back (Cesium upsamples from the parent level).
+        raise HTTPException(status_code=404, detail="heightmap tile not generatable")
+
+    store_tile(z, x, y, png)  # best-effort write-through
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=2592000, immutable",
+        },
+    )
 
 
 def _list_available_tilesets(s3, bucket: str) -> list[str]:

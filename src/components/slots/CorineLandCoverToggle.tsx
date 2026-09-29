@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { Toggle, Slider } from '@nekazari/ui-kit';
-import { useViewerOptional } from '@nekazari/sdk';
-
-declare const Cesium: any;
+import { useClcLayer } from '../../services/clcLayerStore';
 
 const CLC_CATEGORIES = [
     { group: 'Artificial surfaces', color: '#E6004D', items: [
@@ -66,38 +64,11 @@ const CLC_CATEGORIES = [
 const elevationAccent = { base: '#64748B', soft: '#F1F5F9', strong: '#475569' };
 
 export const CorineLandCoverToggle: React.FC = () => {
-    const viewerContext = useViewerOptional();
-    const viewer = viewerContext?.cesiumViewer;
-
-    useEffect(() => {
-        console.log('[CorineToggle] Component mounted, viewer present:', !!viewer);
-    }, [viewer]);
-
-    const [enabled, setEnabled] = useState(false);
-    const [opacity, setOpacity] = useState(0.6);
+    const [{ enabled, opacity }, setClc] = useClcLayer();
+    const setEnabled = (next: boolean) => setClc({ enabled: next });
+    const setOpacity = (next: number) => setClc({ opacity: next });
     const [showLegend, setShowLegend] = useState(false);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-
-    useEffect(() => {
-        console.log('[CorineToggle] Dispatching toggle event:', { enabled, opacity });
-        window.dispatchEvent(new CustomEvent('nkz.clc.toggle', {
-            detail: { enabled, opacity }
-        }));
-    }, [enabled, opacity]);
-
-    useEffect(() => {
-        const saved = localStorage.getItem('nkz_clc_enabled') === 'true';
-        const savedOpacity = parseFloat(localStorage.getItem('nkz_clc_opacity') || '0.6');
-        if (saved) {
-            setEnabled(true);
-            setOpacity(savedOpacity);
-        }
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('nkz_clc_enabled', String(enabled));
-        localStorage.setItem('nkz_clc_opacity', String(opacity));
-    }, [enabled, opacity]);
 
     return (
         <SlotShellCompact moduleId="nkz-module-eu-elevation" accent={elevationAccent}>

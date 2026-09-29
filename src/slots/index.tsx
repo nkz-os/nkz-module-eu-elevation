@@ -2,6 +2,7 @@ import React from 'react';
 import { ElevationAdminControl } from '../components/slots/ElevationAdminControl';
 import { ElevationLayer } from '../components/slots/ElevationLayer';
 import { CorineLandCoverToggle } from '../components/slots/CorineLandCoverToggle';
+import { CorineLayer } from '../components/slots/CorineLayer';
 
 const MODULE_ID = 'nkz-module-eu-elevation';
 
@@ -42,6 +43,13 @@ export const moduleSlots: ModuleViewerSlots = {
       component: 'ElevationLayer',
       priority: 10,
       localComponent: ElevationLayer
+    },
+    {
+      id: 'clc-imagery-layer',
+      moduleId: MODULE_ID,
+      component: 'CorineLayer',
+      priority: 20,
+      localComponent: CorineLayer
     }
   ],
 

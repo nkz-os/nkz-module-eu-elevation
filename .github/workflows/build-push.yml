@@ -107,7 +107,9 @@ jobs:
       - name: Setup MinIO Client
         if: steps.check_secrets.outputs.has_secrets == 'true' && github.event_name != 'pull_request'
         run: |
-          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          docker create --name mcbits ghcr.io/nkz-os/mc:RELEASE.2024-11-21T17-21-54Z
+          docker cp mcbits:/usr/bin/mc /usr/local/bin/mc
+          docker rm mcbits
           chmod +x /usr/local/bin/mc
 
       - name: Upload to MinIO (versioned)

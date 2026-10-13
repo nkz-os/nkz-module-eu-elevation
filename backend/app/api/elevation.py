@@ -553,6 +553,12 @@ async def get_job_status(job_id: str, _auth: AuthContext = require_auth()):
 async def websocket_job_status(websocket: WebSocket, job_id: str):
     await websocket.accept()
 
+    from app.middleware.ws_auth import allowed_origins, origin_allowed
+
+    if not origin_allowed(websocket.headers.get("origin"), allowed_origins()):
+        await websocket.close(code=4003, reason="Origin not allowed")
+        return
+
     token = websocket.cookies.get("nkz_token")
     if not token:
         await websocket.close(code=4001, reason="Missing auth token")

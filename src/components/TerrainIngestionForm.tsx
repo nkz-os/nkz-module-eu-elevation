@@ -159,7 +159,8 @@ export const TerrainIngestionForm: React.FC = () => {
                 const res = await fetch(`${API_ORIGIN}/api/elevation/upload`, {
                     method: 'POST',
                     headers,
-                    body: formData
+                    body: formData,
+                    credentials: 'include',
                 });
 
                 if (!res.ok) {

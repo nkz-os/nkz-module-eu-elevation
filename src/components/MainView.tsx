@@ -1,3 +1,4 @@
+import { API_ORIGIN } from '../utils/apiOrigin';
 import React, { useState, useEffect, useMemo } from 'react';
 import { TerrainIngestionForm } from './TerrainIngestionForm';
 import { CustomDemSourceForm } from './CustomDemSourceForm';
@@ -27,7 +28,7 @@ export const MainView: React.FC = () => {
     const { getToken, getTenantId } = useAuth();
 
     const apiClient = useMemo(() => new NKZClient({
-        baseUrl: '/api/elevation',
+        baseUrl: `${API_ORIGIN}/api/elevation`,
         getToken,
         getTenantId
     }), [getToken, getTenantId]);

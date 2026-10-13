@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useViewerOptional } from '@nekazari/sdk';
+import { API_ORIGIN } from '../../utils/apiOrigin';
 import { createTerrainProvider } from '../../utils/terrainFactory';
 
 declare const Cesium: any;
@@ -20,7 +21,7 @@ function getDefaultCopernicusUrl(): string {
   if (w.__ENV__?.EU_ELEVATION_COPERNICUS_URL) {
     return w.__ENV__.EU_ELEVATION_COPERNICUS_URL;
   }
-  return '/api/elevation/terrain/EU/layer.json';
+  return `${API_ORIGIN}/api/elevation/terrain/EU/layer.json`;
 }
 
 /** Auto-inject Copernicus terrain when region is EU/world. Never shows UI. */

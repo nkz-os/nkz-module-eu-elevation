@@ -1,3 +1,4 @@
+import { API_ORIGIN } from '../utils/apiOrigin';
 import React, { useState, useMemo } from 'react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 import { Plus, Trash2, Globe, Key, Save } from 'lucide-react';
@@ -25,7 +26,7 @@ export const CustomDemSourceForm: React.FC = () => {
     const { getToken, getTenantId } = useAuth();
 
     const apiClient = useMemo(() => new NKZClient({
-        baseUrl: '/api/elevation',
+        baseUrl: `${API_ORIGIN}/api/elevation`,
         getToken,
         getTenantId
     }), [getToken, getTenantId]);

@@ -1,3 +1,4 @@
+import { API_ORIGIN, wsOrigin } from '../utils/apiOrigin';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth, NKZClient, useTranslation } from '@nekazari/sdk';
 
@@ -10,7 +11,7 @@ export const TerrainIngestionForm: React.FC = () => {
     const { getToken, getTenantId } = useAuth();
 
     const apiClient = useMemo(() => new NKZClient({
-        baseUrl: '/api/elevation',
+        baseUrl: `${API_ORIGIN}/api/elevation`,
         getToken,
         getTenantId
     }), [getToken, getTenantId]);
@@ -60,8 +61,7 @@ export const TerrainIngestionForm: React.FC = () => {
     }, []);
 
     const connectWebSocket = (jobId: string) => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/elevation/ws/status/${jobId}`;
+        const wsUrl = `${wsOrigin()}/api/elevation/ws/status/${jobId}`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -156,7 +156,7 @@ export const TerrainIngestionForm: React.FC = () => {
 
                 // NOTE: raw fetch (not NKZClient) — multipart boundary requires
                 // letting the browser set Content-Type. Path is absolute by design.
-                const res = await fetch('/api/elevation/upload', {
+                const res = await fetch(`${API_ORIGIN}/api/elevation/upload`, {
                     method: 'POST',
                     headers,
                     body: formData

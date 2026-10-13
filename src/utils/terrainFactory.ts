@@ -142,10 +142,10 @@ function createOnDemandHeightmapTerrain(baseUrl: string): any {
             const url = level < ON_DEMAND_MIN_ZOOM
                 ? `${TERRARIUM_FALLOFF}/${level}/${x}/${y}.png`
                 : `${baseUrl}/api/elevation/heightmap/${level}/${x}/${y}.png`;
-            // fetch default credentials ('same-origin') sends the session
-            // cookie to the module endpoint while leaving the AWS fallback
-            // cookie-free (S3 CORS does not allow credentials).
-            const res = await fetch(url);
+            // Credentials are sent only to the module endpoint (cross-origin
+            // session cookie); the AWS fallback stays cookie-free (S3 CORS
+            // does not allow credentials).
+            const res = await fetch(url, level < ON_DEMAND_MIN_ZOOM ? undefined : { credentials: 'include' });
             if (!res.ok) {
                 throw new Error(`heightmap tile ${level}/${x}/${y} failed: HTTP ${res.status}`);
             }

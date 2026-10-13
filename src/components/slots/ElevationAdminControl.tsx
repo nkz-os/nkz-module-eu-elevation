@@ -1,3 +1,4 @@
+import { API_ORIGIN } from '../../utils/apiOrigin';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Globe, Settings, Key, Link as LinkIcon } from 'lucide-react';
 import { SlotShell } from '@nekazari/viewer-kit';
@@ -43,7 +44,7 @@ export const ElevationAdminControl: React.FC = () => {
     const { getToken, getTenantId } = useAuth();
 
     const apiClient = useMemo(() => new NKZClient({
-        baseUrl: '/api/elevation',
+        baseUrl: `${API_ORIGIN}/api/elevation`,
         getToken,
         getTenantId
     }), [getToken, getTenantId]);

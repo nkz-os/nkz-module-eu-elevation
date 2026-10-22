@@ -1,0 +1,205 @@
+---
+# Deployment: Elevation API
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elevation-api
+  namespace: nekazari
+  labels:
+    app: elevation-api
+    module: eu-elevation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elevation-api
+  template:
+    metadata:
+      labels:
+        app: elevation-api
+        module: eu-elevation
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:927d516
+          imagePullPolicy: Always
+          command:
+            - uvicorn
+            - "app.main:app"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
+            - name: CELERY_BROKER_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/10"
+            - name: CELERY_RESULT_BACKEND
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/11"
+            - name: TERRAIN_WORK_DIR
+              value: "/tmp/terrain_work"
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: eu-elevation-config
+                  key: ALLOWED_ORIGINS
+            - name: ELEVATION_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: elevation-encryption-secret
+                  key: encryption-key
+                  optional: true
+            - name: JWT_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: eu-elevation-config
+                  key: JWT_ISSUER
+            - name: JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: eu-elevation-config
+                  key: JWKS_URL
+            - name: EU_COPERNICUS_TERRAIN_URL
+              value: "/api/elevation/terrain/EU/layer.json"
+            - name: MINIO_ENDPOINT
+              value: "minio-service:9000"
+            - name: MINIO_BUCKET
+              value: "terrain-tilesets"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-user
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-password
+                  optional: true
+            - name: INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: internal-service-secret
+                  key: INTERNAL_SERVICE_SECRET
+            - name: HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
+          envFrom:
+            - secretRef:
+                name: elevation-db-secret
+                optional: false
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+# Deployment: Elevation Worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elevation-worker
+  namespace: nekazari
+  labels:
+    app: elevation-worker
+    module: eu-elevation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elevation-worker
+  template:
+    metadata:
+      labels:
+        app: elevation-worker
+        module: eu-elevation
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/nkz-os/nkz-module-eu-elevation/backend:927d516
+          imagePullPolicy: Always
+          command:
+            - celery
+            - "-A"
+            - "app.worker.celery_app"
+            - "worker"
+            - "--loglevel=info"
+            - "--concurrency=2"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
+            - name: CELERY_BROKER_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/10"
+            - name: CELERY_RESULT_BACKEND
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/11"
+            - name: TERRAIN_WORK_DIR
+              value: "/tmp/terrain_work"
+            - name: ELEVATION_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: elevation-encryption-secret
+                  key: encryption-key
+                  optional: true
+            - name: GDAL_CACHEMAX
+              value: "2048"
+            - name: GDAL_NUM_THREADS
+              value: "ALL_CPUS"
+            - name: MINIO_ENDPOINT
+              value: "minio-service:9000"
+            - name: MINIO_BUCKET
+              value: "terrain-tilesets"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-user
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-password
+                  optional: true
+          envFrom:
+            - secretRef:
+                name: elevation-db-secret
+                optional: false
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "25m"
+            limits:
+              memory: "1Gi"
+              cpu: "250m"
+---
+# Service: Elevation API
+apiVersion: v1
+kind: Service
+metadata:
+  name: elevation-api-service
+  namespace: nekazari
+  labels:
+    app: elevation-api
+    module: eu-elevation
+spec:
+  selector:
+    app: elevation-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

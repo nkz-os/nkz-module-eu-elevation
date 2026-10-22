@@ -1,0 +1,37 @@
+# GIS & Transcoding
+# Note: GDAL is installed dynamically in the Dockerfile to match system version
+quantized-mesh-encoder>=0.4.2
+pydelatin>=0.2.6  # For geometry decimation
+numpy>=1.26.0
+rasterio>=1.3.10
+Pillow>=10.0.0  # terrarium PNG encoding for on-demand heightmap tiles
+shapely>=2.0.4
+
+# Task Queue & Async
+celery>=5.4.0
+redis>=5.0.3
+
+# Storage & HTTP
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+boto3>=1.34.0  # For S3/MinIO upload
+requests>=2.31.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.1
+
+# ORM
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
+
+# Observability
+loguru>=0.7.2
+
+# Platform SDK
+nkz-platform-sdk>=0.6.2
+
+# Auth & Forms
+PyJWT>=2.8.0
+python-jose[cryptography]>=3.3.0
+cryptography>=41.0.0
+httpx>=0.27.0
+python-multipart>=0.0.9

@@ -1,0 +1,75 @@
+services:
+  elevation-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./backend/app:/app/app
+    ports:
+      - "8008:8000"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/10
+      - CELERY_RESULT_BACKEND=redis://redis:6379/11
+      - DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nekazari
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=terrain-tilesets
+      - JWT_ISSUER=http://keycloak:8080/auth/realms/nekazari
+      - TRUST_API_GATEWAY=false
+    depends_on:
+      - redis
+      - postgresql
+    networks:
+      - elevation-net
+
+  elevation-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend/app:/app/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/10
+      - CELERY_RESULT_BACKEND=redis://redis:6379/11
+      - DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nekazari
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=terrain-tilesets
+      - GDAL_CACHEMAX=2048
+      - GDAL_NUM_THREADS=ALL_CPUS
+    depends_on:
+      - redis
+      - postgresql
+    networks:
+      - elevation-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - elevation-net
+
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nekazari
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - elevation-net
+
+networks:
+  elevation-net:
+    driver: bridge
+
+volumes:
+  pgdata:

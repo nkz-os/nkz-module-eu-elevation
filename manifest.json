@@ -1,0 +1,146 @@
+{
+  "id": "nkz-module-eu-elevation",
+  "name": "nkz-module-eu-elevation",
+  "display_name": "EU Elevation Module",
+  "version": "1.0.0",
+  "description": "Premium Nekazari module for generating and serving highly-detailed, on-demand 3D terrain and elevation data across the European Union and the United Kingdom via Quantized Mesh.",
+  "description_i18n": {
+    "es": "Módulo premium de Nekazari para generar y servir datos 3D de terreno y elevación de alta precisión bajo demanda en toda la Unión Europea y Reino Unido mediante Quantized Mesh.",
+    "en": "Premium Nekazari module for generating and serving highly-detailed, on-demand 3D terrain and elevation data across the European Union and the United Kingdom via Quantized Mesh.",
+    "eu": "Nekazariren premium modulua, eskariaren arabera, EB eta Erresuma Batuan zehar 3D lur-elevazio datu oso zehatzak sortu eta zerbitzatzeko Quantized Mesh bidez.",
+    "fr": "Module premium Nekazari pour générer et servir des données 3D de terrain et d'élévation très détaillées à la demande dans toute l'Union Européenne et le Royaume-Uni via Quantized Mesh.",
+    "pt": "Módulo premium da Nekazari para gerar e servir dados 3D de terreno e elevação altamente detalhados sob demanda em toda a União Europeia e Reino Unido via Quantized Mesh.",
+    "ca": "Mòdul premium de Nekazari per generar i servir dades 3D de terreny i elevació d'alta precisió sota demanda a tota la Unió Europea i el Regne Unit mitjançant Quantized Mesh."
+  },
+  "short_description": "Pan-European 3D Elevation Models",
+  "_comment_branding": "=== BRANDING & VISUAL IDENTITY ===",
+  "icon": "mountain",
+  "accent": {
+    "base": "#64748B",
+    "soft": "#F1F5F9",
+    "strong": "#475569"
+  },
+  "icon_url": "/modules/nkz-module-eu-elevation/assets/icon.png",
+  "company_logo_url": "/modules/nkz-module-eu-elevation/assets/company-logo.png",
+  "_comment_developer": "=== DEVELOPER INFORMATION ===",
+  "author": {
+    "name": "Nekazari Team",
+    "email": "nkz@nkz-os.org"
+  },
+  "developer": {
+    "organization": "Nekazari",
+    "website": "https://YOUR_DOMAIN",
+    "support_email": "nkz@nkz-os.org"
+  },
+  "_comment_validation": "=== NKZ PLATFORM VALIDATION ===",
+  "nkz_validated": true,
+  "nkz_validated_at": "2026-02-20",
+  "nkz_validation_notes": "Modules validated by NKZ team ensure security, compatibility, and best practices compliance",
+  "_comment_categorization": "=== CATEGORIZATION & PRICING ===",
+  "category": "analytics",
+  "module_type": "ADDON_PAID",
+  "required_plan_type": "premium",
+  "pricing_tier": "PAID",
+  "_comment_routing": "=== NAVIGATION & ROUTING ===",
+  "route_path": "/eu-elevation",
+  "label": "EU Elevation",
+  "required_roles": [
+    "Farmer",
+    "TenantAdmin",
+    "PlatformAdmin"
+  ],
+  "navigation": {
+    "_comment": "Controls how the module appears in the top navigation bar Mega Menu",
+    "enabled": true,
+    "priority": 50,
+    "section": "modules"
+  },
+  "_comment_technical": "=== TECHNICAL CONFIGURATION ===",
+  "dependencies": {
+    "sdk_version": "^1.0.0",
+    "react_version": "^18.3.1",
+    "platform_version": "^2.0.0"
+  },
+  "permissions": {
+    "api_access": [],
+    "storage_access": false,
+    "external_requests": []
+  },
+  "build_config": {
+    "type": "iife",
+    "remote_entry_url": "/modules/nkz-module-eu-elevation/nkz-module.js"
+  },
+  "_comment_slots": "=== VIEWER & DASHBOARD INTEGRATION ===",
+  "slots": {
+    "_comment": "Define widgets that integrate into the Unified Viewer (/entities) and Dashboard",
+    "layer-toggle": [
+      {
+        "id": "clc-layer-toggle",
+        "priority": 30,
+        "component": "CorineLandCoverToggle"
+      }
+    ],
+    "context-panel": [
+      {
+        "id": "elevation-context-control",
+        "priority": 50,
+        "component": "ElevationAdminControl",
+        "tab": "Terreno"
+      }
+    ],
+    "bottom-panel": [],
+    "entity-tree": [],
+    "map-layer": [
+      {
+        "id": "elevation-cesium-layer",
+        "priority": 10,
+        "component": "ElevationLayer"
+      }
+    ],
+    "dashboard-widget": []
+  },
+  "_comment_metadata": "=== ADDITIONAL METADATA ===",
+  "surfaces": {
+    "web": {
+      "slots": {
+        "layer-toggle": [
+          {
+            "id": "clc-layer-toggle",
+            "priority": 30,
+            "component": "CorineLandCoverToggle"
+          }
+        ],
+        "context-panel": [
+          {
+            "id": "elevation-context-control",
+            "priority": 50,
+            "component": "ElevationAdminControl",
+            "tab": "Terreno"
+          }
+        ],
+        "bottom-panel": [],
+        "entity-tree": [],
+        "map-layer": [
+          {
+            "id": "elevation-cesium-layer",
+            "priority": 10,
+            "component": "ElevationLayer"
+          }
+        ],
+        "dashboard-widget": []
+      }
+    }
+  },
+  "metadata": {
+    "icon": "✨",
+    "color": "#3B82F6",
+    "features": [
+      "Quantized Mesh Processing",
+      "WCS Ingestion",
+      "Geometry Decimation"
+    ],
+    "screenshots": [],
+    "changelog_url": null,
+    "documentation_url": null
+  }
+}

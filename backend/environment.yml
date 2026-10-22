@@ -1,0 +1,33 @@
+# Conda environment for LIDAR Module
+# Install via: micromamba install -f environment.yml
+
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python version
+  - python=3.11
+
+  # Core geospatial libraries (must be installed via Conda)
+  - pdal=2.6
+  - python-pdal=3.2
+  - gdal=3.8
+  - rasterio=1.3
+  - fiona=1.9
+  - shapely=2.0
+  - pyproj=3.6
+  - geopandas=0.14
+
+  # Image processing for tree segmentation
+  - scikit-image=0.22
+  - scipy=1.11
+
+  # NumPy (pinned for compatibility)
+  - numpy=1.24
+
+  # PostgreSQL adapter
+  - psycopg2=2.9
+
+  # LASzip for LAZ decompression (PDAL plugin)
+  - laszip=3.4

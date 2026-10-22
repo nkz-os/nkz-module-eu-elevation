@@ -2,6 +2,8 @@ import os
 from celery import Celery
 from loguru import logger
 
+from app.common.redact_url import redact_url_credentials
+
 # Initialize Celery app
 # Defaults to Redis running on localhost for local dev
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -25,7 +27,10 @@ celery_app.conf.update(
     task_track_started=True
 )
 
-logger.info(f"Initialized Elevation Celery Worker pointing to {CELERY_BROKER_URL}")
+logger.info(
+    "Initialized Elevation Celery Worker pointing to {}",
+    redact_url_credentials(CELERY_BROKER_URL),
+)
 
 if __name__ == "__main__":
     celery_app.start()

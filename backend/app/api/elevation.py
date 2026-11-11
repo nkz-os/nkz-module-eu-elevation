@@ -1022,7 +1022,12 @@ async def get_elevation_raster(
     _tenant_id: str = Depends(require_elevation_reader),
 ):
     """Return a DEM grid dict {elevations, origin_lon, origin_lat, pixel_size_deg, cols, rows}
-    for the requested bounding box. Uses the best available DEM source."""
+    for the requested bounding box. Uses the best available DEM source.
+
+    Row order: ``elevations[0]`` is the NORTH edge of the bbox and column 0 the
+    west edge (``row_order: "north_first"``, ``north_lat``). ``origin_lat`` is the
+    SOUTH edge, kept for compatibility: place the grid from ``north_lat``.
+    """
     bbox = (min_lon, min_lat, max_lon, max_lat)
 
     # Find a DEM source covering the bbox centre
@@ -1076,6 +1081,8 @@ async def get_elevation_raster(
         "elevations": elevations,
         "origin_lon": min_lon,
         "origin_lat": min_lat,
+        "north_lat": max_lat,
+        "row_order": "north_first",
         "pixel_size_deg": pixel_size_deg,
         "cols": cols,
         "rows": rows,

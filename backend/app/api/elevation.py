@@ -1082,7 +1082,7 @@ async def get_elevation_raster(
     Source: the national DEM when it is at most 30 m (or a fine coverage exists
     for the requested resolution); otherwise, or when the national request
     fails, Copernicus GLO-30. ``source.fallback_reason`` is ``national_coarser``,
-    ``national_error``, ``no_national`` or null, and ``source.attribution`` the
+    ``national_error``, ``no_national``, ``national_no_coverage`` or null, and ``source.attribution`` the
     required credit text when the source defines one.
 
     No-data: ``nodata=zero`` (default) returns no-data cells as 0; ``nodata=null``
@@ -1114,6 +1114,7 @@ async def get_elevation_raster(
 
     grid = None
     mask = None
+    prefetched = None
     if dem.country_code != "EU":
         try:
             band, declared_nodata = await _national_raster(dem, resolution_m, bbox, cols, rows)
@@ -1123,6 +1124,24 @@ async def get_elevation_raster(
             if declared_nodata is not None and not np.isnan(declared_nodata):
                 mask |= band == declared_nodata
             grid = band
+            if declared_nodata is None and band.shape == (rows, cols):
+                zero_cells = band == 0
+                if zero_cells.any():
+                    try:
+                        cop = await asyncio.to_thread(read_copernicus_grid, bbox, cols, rows)
+                    except Exception as e:
+                        logger.warning("Zero-mask read failed, keeping national grid: %s", type(e).__name__)
+                    else:
+                        land = np.nan_to_num(cop, nan=0.0) > 0.5
+                        if (zero_cells & land).sum() > 0.5 * zero_cells.size:
+                            # Mostly outside national coverage: serve Copernicus.
+                            eu = get_source("EU")
+                            if eu is not None:
+                                dem, fallback_reason = eu, "national_no_coverage"
+                                grid = None
+                                prefetched = cop
+                        elif nodata == NodataEnum.null:
+                            mask |= zero_cells & (land | np.isnan(cop))
         except Exception as e:
             # Any failure (HTTP, timeout, parse) falls back to Copernicus.
             logger.warning("National raster %s failed, trying Copernicus: %s", dem.country_code, type(e).__name__)
@@ -1136,7 +1155,8 @@ async def get_elevation_raster(
 
     if grid is None:
         try:
-            cop = await asyncio.to_thread(read_copernicus_grid, bbox, cols, rows)
+            cop = prefetched if prefetched is not None else await asyncio.to_thread(
+                read_copernicus_grid, bbox, cols, rows)
         except Exception as e:
             logger.error("Copernicus raster read failed: %s", type(e).__name__)
             raise HTTPException(status_code=502, detail={

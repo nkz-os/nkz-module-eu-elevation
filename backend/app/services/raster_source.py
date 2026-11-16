@@ -41,7 +41,7 @@ COPERNICUS_ATTRIBUTION = (
 # Bounded reads: a z14 tile must answer inside consumers' 15 s budget.
 _READ_ENV = {**_COPERNICUS_S3_ENV, "GDAL_HTTP_TIMEOUT": "10", "GDAL_HTTP_MAX_RETRY": "1"}
 
-FALLBACK_REASONS = ("national_coarser", "national_error", "no_national")
+FALLBACK_REASONS = ("national_coarser", "national_error", "no_national", "national_no_coverage")
 
 
 def choose_raster_source(

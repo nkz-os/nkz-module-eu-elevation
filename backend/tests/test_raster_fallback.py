@@ -265,3 +265,74 @@ def test_no_seam_across_tile_boundaries(cells, res):
     src_step_lat = 100.0 / PX
     assert (d_col >= -1e-6).all() and d_col.max() <= src_step_lon + 0.02
     assert (d_row <= 1e-6).all() and -d_row.min() <= src_step_lat + 0.02
+
+
+# --- National zero-mask against Copernicus ----------------------------------------
+
+def _wcs_with_zero_cols(zero_frac, value=300):
+    """National grid whose first `zero_frac` of columns is exact 0, no declared nodata."""
+    async def fake(source, bbox, width, height):
+        arr = np.full((height, width), value)
+        arr[:, : int(round(width * zero_frac))] = 0
+        return _tiff(arr, bbox)
+    return AsyncMock(side_effect=fake)
+
+
+def test_mostly_zero_national_serves_copernicus(cells):
+    cells((42, -2))
+    wcs = _wcs_with_zero_cols(1.0)
+    bbox = (-1.5, 42.4, -1.49, 42.41)
+    with patch.object(elevation, "_wcs_bbox_query", wcs):
+        for mode in ("zero", "null"):
+            r = _call(bbox, 10, nodata=mode)
+            assert r["source"]["id"] == "builtin:EU"
+            assert r["source"]["fallback_reason"] == "national_no_coverage"
+            assert r["nodata_count"] == 0
+            assert all(v is not None and v > 500 for row in r["elevations"] for v in row)
+
+
+def test_border_partial_zero_null_only_in_null_mode(cells):
+    cells((42, -2))
+    bbox = (-1.5, 42.4, -1.49, 42.41)
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(0.3)):
+        nul = _call(bbox, 10, nodata="null")
+        zero = _call(bbox, 10)
+    cols = nul["cols"]
+    k = int(round(cols * 0.3))
+    assert nul["source"]["id"] == "builtin:ES"
+    assert all(row[:k] == [None] * k and row[k:] == [300] * (cols - k) for row in nul["elevations"])
+    assert nul["nodata_count"] == k * nul["rows"]
+    assert all(row[:k] == [0] * k for row in zero["elevations"])
+    assert zero["nodata_count"] == 0
+
+
+def test_coastal_zero_over_missing_copernicus_is_null(cells):
+    cells()  # no Copernicus cell at all: sea
+    bbox = (-1.5, 42.4, -1.49, 42.41)
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(0.3)):
+        nul = _call(bbox, 10, nodata="null")
+        zero = _call(bbox, 10)
+    k = int(round(nul["cols"] * 0.3))
+    assert nul["source"]["id"] == "builtin:ES"
+    assert all(row[:k] == [None] * k for row in nul["elevations"])
+    assert nul["nodata_count"] == k * nul["rows"]
+    assert all(row[:k] == [0] * k for row in zero["elevations"])
+
+
+def test_mask_read_failure_keeps_national_grid(cells):
+    bbox = (-1.5, 42.4, -1.49, 42.41)
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(1.0)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=RuntimeError("s3")):
+        r = _call(bbox, 10, nodata="null")
+    assert r["source"]["id"] == "builtin:ES"
+    assert r["source"]["fallback_reason"] is None
+    assert r["nodata_count"] == 0
+    assert all(v == 0 for row in r["elevations"] for v in row)
+
+
+def test_no_zero_cells_no_copernicus_call():
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_returning(612)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=AssertionError("called")) as cop:
+        r = _call(ES_BBOX, 10, nodata="null")
+    assert cop.call_count == 0
+    assert r["source"]["id"] == "builtin:ES"

@@ -39,9 +39,11 @@ COPERNICUS_ATTRIBUTION = (
 )
 
 # Bounded reads: a z14 tile must answer inside consumers' 15 s budget.
-_READ_ENV = {**_COPERNICUS_S3_ENV, "GDAL_HTTP_TIMEOUT": "10", "GDAL_HTTP_MAX_RETRY": "1"}
+_READ_ENV = {**_COPERNICUS_S3_ENV, "GDAL_HTTP_TIMEOUT": "10", "GDAL_HTTP_CONNECTTIMEOUT": "3",
+              "GDAL_HTTP_MAX_RETRY": "0"}
 
-FALLBACK_REASONS = ("national_coarser", "national_error", "no_national", "national_no_coverage")
+FALLBACK_REASONS = ("national_coarser", "national_error", "no_national",
+                    "national_unsupported", "national_no_coverage")
 
 
 def choose_raster_source(
@@ -51,7 +53,8 @@ def choose_raster_source(
 
     Returns ``(source, fallback_reason)``. ``fallback_reason`` is None when the
     national source is used, ``national_coarser`` when it is coarser than
-    Copernicus, ``no_national`` when no national source covers the point.
+    Copernicus, ``no_national`` when no national source covers the point,
+    ``national_unsupported`` when it is not WCS.
     ``(None, None)`` means nothing covers the point.
     """
     eu = get_source("EU")
@@ -64,6 +67,9 @@ def choose_raster_source(
     if national is None:
         return (eu, "no_national") if eu else (None, None)
 
+    if national.service_type != "WCS":
+        # The raster endpoint only speaks WCS (WMS/REST/DOWNLOAD cannot answer).
+        return (eu, "national_unsupported") if eu else (None, None)
     if coverage_for_resolution(national.country_code, resolution_m) is not None:
         return national, None
     native = _parse_resolution(national.resolution)

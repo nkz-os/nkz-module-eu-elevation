@@ -6,6 +6,7 @@ GeoTIFFs (a missing cell is a path that does not exist, as in the bucket).
 import asyncio
 import io
 import math
+import time
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -179,8 +180,10 @@ def test_choose_source():
     assert (es5.country_code, reason) == ("ES", None)
     de, reason = choose_raster_source(48.3, 11.3, 10)
     assert (de.country_code, reason) == ("EU", "national_coarser")
-    fr, reason = choose_raster_source(47.0, 2.0, 10)  # 1 m national
-    assert (fr.country_code, reason) == ("FR", None)
+    fr, reason = choose_raster_source(47.0, 2.0, 10)  # FR is WMS: not raster-capable
+    assert (fr.country_code, reason) == ("EU", "national_unsupported")
+    shadowed, reason = choose_raster_source(50.3, 9.36, 10)  # western DE, inside FR's bbox
+    assert (shadowed.country_code, reason) == ("EU", "national_unsupported")
     sea, reason = choose_raster_source(40.0, -20.0, 10)
     assert (sea.country_code, reason) == ("EU", "no_national")
     assert choose_raster_source(10.0, 0.0, 10) == (None, None)
@@ -336,3 +339,167 @@ def test_no_zero_cells_no_copernicus_call():
         r = _call(ES_BBOX, 10, nodata="null")
     assert cop.call_count == 0
     assert r["source"]["id"] == "builtin:ES"
+
+
+# --- Deadline ---------------------------------------------------------------------
+
+def test_default_budgets():
+    assert elevation.REQUEST_DEADLINE_S == 12.0
+    assert elevation.NATIONAL_TIMEOUT_S == 6.0
+
+
+def test_slow_national_gets_copernicus_within_budget(cells):
+    cells((42, -2))
+
+    async def slow(source, bbox, width, height):
+        await asyncio.sleep(30)
+
+    with patch.object(elevation, "NATIONAL_TIMEOUT_S", 0.3), \
+         patch.object(elevation, "_wcs_bbox_query", AsyncMock(side_effect=slow)):
+        t = time.monotonic()
+        r = _call((-1.5, 42.4, -1.49, 42.41), 10)
+        took = time.monotonic() - t
+    assert r["source"]["fallback_reason"] == "national_error"
+    assert took < 3.0
+
+
+def test_slow_copernicus_errors_within_budget(cells):
+    def slow(*a, **k):
+        time.sleep(2.0)
+
+    async def timed():
+        t = time.monotonic()
+        try:
+            await elevation.get_elevation_raster(
+                min_lon=DE_BBOX[0], min_lat=DE_BBOX[1], max_lon=DE_BBOX[2], max_lat=DE_BBOX[3],
+                resolution_m=10, purpose=elevation.PurposeEnum.auto,
+                nodata=elevation.NodataEnum.zero, _tenant_id="acme")
+        except elevation.HTTPException as e:
+            return e, time.monotonic() - t
+        raise AssertionError("expected an error")
+
+    with patch.object(elevation, "REQUEST_DEADLINE_S", 0.5), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=slow):
+        # the worker thread is abandoned on timeout; asyncio.run joining it at
+        # shutdown is a test artifact, so time inside the loop.
+        err, took = asyncio.run(timed())
+    assert err.status_code == 504
+    assert took < 1.0
+
+
+def test_slow_mask_read_keeps_national_grid(cells):
+    def slow(*a, **k):
+        time.sleep(2.0)
+
+    with patch.object(elevation, "REQUEST_DEADLINE_S", 0.5), \
+         patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(1.0)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=slow):
+        r = _call((-1.5, 42.4, -1.49, 42.41), 10)
+    assert r["source"]["id"] == "builtin:ES"
+    assert all(v == 0 for row in r["elevations"] for v in row)
+
+
+# --- Exact-0.0 sea inside a coastal Copernicus tile -------------------------------
+
+def _write_coastal_cell(dirpath, lat_i, lon_i):
+    arr = _ramp(lat_i, lon_i)
+    arr[: PX // 2, :] = 0.0  # northern half is sea, flattened to exactly 0.0
+    with rasterio.open(
+        dirpath / f"{lat_i}_{lon_i}.tif", "w", driver="GTiff", height=PX, width=PX, count=1,
+        dtype="float32", crs="EPSG:4326",
+        transform=from_bounds(lon_i, lat_i, lon_i + 1, lat_i + 1, PX, PX),
+    ) as dst:
+        dst.write(arr, 1)
+
+
+@pytest.fixture
+def coastal(tmp_path):
+    for cell in ((48, 11), (42, -2)):
+        _write_coastal_cell(tmp_path, *cell)
+
+    def paths_for(bbox):
+        return [str(tmp_path / f"{math.floor(bbox[1])}_{math.floor(bbox[0])}.tif")]
+
+    with patch.object(raster_source, "covering_copernicus_paths", paths_for):
+        yield
+
+
+def test_copernicus_exact_zero_sea_is_nodata(coastal):
+    bbox = (11.4, 48.45, 11.41, 48.55)  # straddles the sea/land line at 48.5
+    nul = _call(bbox, 100, nodata="null")
+    zero = _call(bbox, 100)
+    n_none = sum(v is None for r in nul["elevations"] for v in r)
+    assert n_none == nul["nodata_count"] > 0
+    assert nul["elevations"][0][0] is None and nul["elevations"][-1][0] is not None
+    assert zero["nodata_count"] == nul["nodata_count"]  # same meaning in both modes
+    assert zero["elevations"][0][0] == 0 and not any(v is None for r in zero["elevations"] for v in r)
+
+
+def test_national_zero_over_copernicus_sea_is_null(coastal):
+    bbox = (-1.5, 42.6, -1.49, 42.7)  # inside the all-0.0 half of the (42, -2)... see below
+    # cell (42,-2) spans lon -2..-1, lat 42..43; sea = lat > 42.5
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(0.3)):
+        nul = _call(bbox, 100, nodata="null")
+        zero = _call(bbox, 100)
+    k = int(round(nul["cols"] * 0.3))
+    assert nul["source"]["id"] == "builtin:ES"
+    assert all(row[:k] == [None] * k for row in nul["elevations"])
+    assert nul["nodata_count"] == k * nul["rows"]
+    assert all(row[:k] == [0] * k for row in zero["elevations"])
+
+
+# --- Zero-mask gate (M-6) ---------------------------------------------------------
+
+def test_zero_mode_below_half_makes_no_mask_read():
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(0.49)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=AssertionError("called")) as cop:
+        r = _call((-1.5, 42.4, -1.49, 42.41), 10)
+    assert cop.call_count == 0
+    assert r["source"]["id"] == "builtin:ES"
+
+
+def test_zero_mode_above_half_reads_and_serves_copernicus(cells):
+    cells((42, -2))
+    with patch.object(elevation, "_wcs_bbox_query", _wcs_with_zero_cols(0.6)):
+        r = _call((-1.5, 42.4, -1.49, 42.41), 10)
+    assert r["source"]["id"] == "builtin:EU"
+    assert r["source"]["fallback_reason"] == "national_no_coverage"
+
+
+def test_declared_nodata_with_zeros_makes_no_mask_read():
+    async def fake(source, bbox, width, height):
+        arr = np.zeros((height, width))
+        return _tiff(arr, bbox, nodata=-9999)
+
+    with patch.object(elevation, "_wcs_bbox_query", AsyncMock(side_effect=fake)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=AssertionError("called")) as cop:
+        _call(ES_BBOX, 10, nodata="null")
+    assert cop.call_count == 0
+
+
+def test_shape_mismatch_skips_mask_read():
+    async def fake(source, bbox, width, height):
+        return _tiff(np.zeros((3, 3)), bbox)
+
+    with patch.object(elevation, "_wcs_bbox_query", AsyncMock(side_effect=fake)), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=AssertionError("called")) as cop:
+        r = _call(ES_BBOX, 10, nodata="null")
+    assert cop.call_count == 0
+    assert r["source"]["id"] == "builtin:ES"
+
+
+# --- Size guard (I-4) ---------------------------------------------------------------
+
+def test_copernicus_branch_rejects_huge_grid():
+    with patch.object(raster_source, "read_copernicus_grid", side_effect=AssertionError("called")):
+        with pytest.raises(elevation.HTTPException) as ei:
+            _call((11.0, 48.0, 12.0, 49.0), 10)  # ~124 M cells
+    assert ei.value.status_code == 400
+    assert ei.value.detail["error"] == "grid_too_large"
+
+
+def test_national_error_with_huge_grid_is_400():
+    with patch.object(elevation, "_wcs_bbox_query", AsyncMock(side_effect=httpx.ReadTimeout("t"))):
+        with pytest.raises(elevation.HTTPException) as ei:
+            _call((-2.0, 42.0, -1.0, 43.0), 10)
+    assert ei.value.status_code == 400

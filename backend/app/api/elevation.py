@@ -1012,6 +1012,14 @@ async def _wcs_bbox_query(source: dict, bbox: tuple, width: int, height: int) ->
         return resp.content
 
 
+# Whole-request budget, kept under the consumers' 15 s client timeouts.
+REQUEST_DEADLINE_S = 12.0
+# National WCS budget when a Copernicus fallback exists.
+NATIONAL_TIMEOUT_S = 6.0
+# Copernicus grids are built in memory and serialised to lists.
+MAX_COPERNICUS_CELLS = 4_000_000
+
+
 class NodataEnum(str, Enum):
     zero = "zero"
     null = "null"
@@ -1055,10 +1063,12 @@ async def _national_raster(dem, resolution_m, bbox, cols, rows):
         "country_code": dem.country_code,
     }
     raw = await _wcs_bbox_query(source_dict, bbox, cols, rows)
-    with rasterio.open(io.BytesIO(raw)) as ds:
-        band = ds.read(1)
-        nodata = ds.nodata
-    return band, nodata
+
+    def _decode():
+        with rasterio.open(io.BytesIO(raw)) as ds:
+            return ds.read(1), ds.nodata
+
+    return await asyncio.to_thread(_decode)
 
 
 @router.get("/raster")
@@ -1082,14 +1092,20 @@ async def get_elevation_raster(
     Source: the national DEM when it is at most 30 m (or a fine coverage exists
     for the requested resolution); otherwise, or when the national request
     fails, Copernicus GLO-30. ``source.fallback_reason`` is ``national_coarser``,
-    ``national_error``, ``no_national``, ``national_no_coverage`` or null, and ``source.attribution`` the
+    ``national_error``, ``no_national``, ``national_unsupported``,
+    ``national_no_coverage`` or null, and ``source.attribution`` the
     required credit text when the source defines one.
 
     No-data: ``nodata=zero`` (default) returns no-data cells as 0; ``nodata=null``
     returns them as JSON null. ``nodata_count`` is returned in both modes. No-data
     is the dataset's declared nodata value, cells outside the read coverage, and
-    Copernicus 1-degree cells missing from the bucket (open sea: genuinely 0 m in
-    the product, but absent, so reported as no-data).
+    Copernicus 1-degree cells missing from the bucket and Copernicus cells that are
+    exactly 0.0 (sea; genuinely 0 m in the product, but reported as no-data).
+    ``nodata_count`` counts no-data cells however they are encoded. National 0s are
+    only classified when a Copernicus mask read is made (always in null mode; in
+    zero mode only when more than half of the grid is 0), so the count covers what
+    was detected. Copernicus grids above 4,000,000 cells are rejected with 400
+    ``grid_too_large``; the whole request has a 12 s deadline.
     """
     from app.services.raster_source import choose_raster_source, read_copernicus_grid
 
@@ -1112,58 +1128,94 @@ async def get_elevation_raster(
     # Recalculate from integer dimensions for consistent step
     pixel_size_deg = (max_lon - min_lon) / cols
 
+    started = time.monotonic()
+
+    def remaining() -> float:
+        return REQUEST_DEADLINE_S - (time.monotonic() - started)
+
+    def _too_large():
+        return HTTPException(status_code=400, detail={
+            "error": "grid_too_large",
+            "message": f"Copernicus grid of {rows * cols} cells exceeds {MAX_COPERNICUS_CELLS}",
+        })
+
+    copernicus_ok = rows * cols <= MAX_COPERNICUS_CELLS
+    can_fall_back = get_source("EU") is not None
+    if dem.country_code == "EU" and not copernicus_ok:
+        raise _too_large()
+
     grid = None
     mask = None
     prefetched = None
     if dem.country_code != "EU":
         try:
-            band, declared_nodata = await _national_raster(dem, resolution_m, bbox, cols, rows)
+            nat_budget = min(NATIONAL_TIMEOUT_S, remaining()) if can_fall_back else remaining()
+            band, declared_nodata = await asyncio.wait_for(
+                _national_raster(dem, resolution_m, bbox, cols, rows), timeout=max(nat_budget, 0.1))
             mask = np.zeros(band.shape, dtype=bool)
             if np.issubdtype(band.dtype, np.floating):
                 mask |= np.isnan(band)
             if declared_nodata is not None and not np.isnan(declared_nodata):
                 mask |= band == declared_nodata
             grid = band
-            if declared_nodata is None and band.shape == (rows, cols):
+            if declared_nodata is None and band.shape == (rows, cols) and copernicus_ok and can_fall_back:
                 zero_cells = band == 0
-                if zero_cells.any():
+                # Rule (a) needs > 50 % zeros, so below that only null mode benefits.
+                worth_reading = zero_cells.any() and (
+                    nodata == NodataEnum.null or zero_cells.mean() > 0.5)
+                if worth_reading:
                     try:
-                        cop = await asyncio.to_thread(read_copernicus_grid, bbox, cols, rows)
+                        cop = await asyncio.wait_for(
+                            asyncio.to_thread(read_copernicus_grid, bbox, cols, rows),
+                            timeout=max(remaining(), 0.1))
                     except Exception as e:
                         logger.warning("Zero-mask read failed, keeping national grid: %s", type(e).__name__)
                     else:
                         land = np.nan_to_num(cop, nan=0.0) > 0.5
                         if (zero_cells & land).sum() > 0.5 * zero_cells.size:
                             # Mostly outside national coverage: serve Copernicus.
-                            eu = get_source("EU")
-                            if eu is not None:
-                                dem, fallback_reason = eu, "national_no_coverage"
-                                grid = None
-                                prefetched = cop
-                        elif nodata == NodataEnum.null:
-                            mask |= zero_cells & (land | np.isnan(cop))
+                            dem, fallback_reason = get_source("EU"), "national_no_coverage"
+                            grid = None
+                            prefetched = cop
+                        else:
+                            # National 0 over Copernicus land, sea (0.0) or a missing tile.
+                            mask |= zero_cells & (land | np.isnan(cop) | (cop == 0))
         except Exception as e:
             # Any failure (HTTP, timeout, parse) falls back to Copernicus.
-            logger.warning("National raster %s failed, trying Copernicus: %s", dem.country_code, type(e).__name__)
-            eu = get_source("EU")
-            if eu is None:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            logger.warning("National raster %s failed, trying Copernicus: %s status=%s",
+                           dem.country_code, type(e).__name__, status)
+            if not can_fall_back:
                 raise HTTPException(status_code=502, detail={
                     "error": "wcs_unavailable",
                     "message": f"DEM source {dem.country_code} unavailable"
                 })
-            dem, fallback_reason = eu, "national_error"
+            if not copernicus_ok:
+                raise _too_large()
+            dem, fallback_reason = get_source("EU"), "national_error"
 
     if grid is None:
         try:
-            cop = prefetched if prefetched is not None else await asyncio.to_thread(
-                read_copernicus_grid, bbox, cols, rows)
+            if prefetched is not None:
+                cop = prefetched
+            else:
+                cop = await asyncio.wait_for(
+                    asyncio.to_thread(read_copernicus_grid, bbox, cols, rows),
+                    timeout=max(remaining(), 0.1))
+        except asyncio.TimeoutError:
+            logger.error("Copernicus raster read exceeded the request deadline")
+            raise HTTPException(status_code=504, detail={
+                "error": "copernicus_timeout",
+                "message": "Copernicus DEM did not answer in time"
+            })
         except Exception as e:
             logger.error("Copernicus raster read failed: %s", type(e).__name__)
             raise HTTPException(status_code=502, detail={
                 "error": "copernicus_unavailable",
                 "message": "Copernicus DEM unreachable"
             })
-        mask = np.isnan(cop)
+        # Sea inside a coastal tile is exactly 0.0 in the product: no-data.
+        mask = np.isnan(cop) | (cop == 0)
         grid = np.round(np.nan_to_num(cop.astype(np.float64), nan=0.0), 2)
 
     return {

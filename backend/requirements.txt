@@ -10,6 +10,7 @@ shapely>=2.0.4
 # Task Queue & Async
 celery>=5.4.0
 redis>=5.0.3
+packaging>=24.0  # kombu>=5.7 redis transport imports it without declaring it
 
 # Storage & HTTP
 fastapi>=0.109.0

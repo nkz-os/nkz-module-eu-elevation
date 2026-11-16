@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
+import numpy as np
 import rasterio
 from fastapi import APIRouter, Depends, HTTPException, Query, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import JSONResponse, Response
@@ -1011,6 +1012,55 @@ async def _wcs_bbox_query(source: dict, bbox: tuple, width: int, height: int) ->
         return resp.content
 
 
+class NodataEnum(str, Enum):
+    zero = "zero"
+    null = "null"
+
+
+def _finish_grid(grid: np.ndarray, mask: np.ndarray, mode: "NodataEnum") -> list:
+    """Serialise a grid: no-data cells become 0 (zero mode) or None (null mode)."""
+    if mode == NodataEnum.null:
+        out = grid.astype(object)
+        out[mask] = None
+        return out.tolist()
+    out = grid.copy()
+    out[mask] = 0
+    return out.tolist()
+
+
+def _raster_source_block(dem, fallback_reason: Optional[str]) -> dict:
+    from app.services.raster_source import COPERNICUS_ATTRIBUTION
+    return {
+        "id": f"builtin:{dem.country_code}",
+        "name": dem.country_name,
+        "category": (
+            "copernicus_s3" if dem.service_type == "DOWNLOAD"
+            else f"custom_wcs:{dem.country_code}"
+        ),
+        "resolution_m": _parse_resolution(dem.resolution),
+        # Only Copernicus carries an attribution text stated in the catalog docs.
+        "attribution": COPERNICUS_ATTRIBUTION if dem.country_code == "EU" else None,
+        "fallback_reason": fallback_reason,
+    }
+
+
+async def _national_raster(dem, resolution_m, bbox, cols, rows):
+    """National WCS band and its declared nodata value. Raises on any failure."""
+    from app.dem_sources import coverage_for_resolution
+    chosen_layer = coverage_for_resolution(dem.country_code, resolution_m) or dem.layer_name
+    source_dict = {
+        "service_url": dem.service_url,
+        "layer_name": chosen_layer,
+        "format": dem.format,
+        "country_code": dem.country_code,
+    }
+    raw = await _wcs_bbox_query(source_dict, bbox, cols, rows)
+    with rasterio.open(io.BytesIO(raw)) as ds:
+        band = ds.read(1)
+        nodata = ds.nodata
+    return band, nodata
+
+
 @router.get("/raster")
 async def get_elevation_raster(
     min_lon: float,
@@ -1019,6 +1069,7 @@ async def get_elevation_raster(
     max_lat: float,
     resolution_m: float = 10,
     purpose: PurposeEnum = PurposeEnum.auto,
+    nodata: NodataEnum = NodataEnum.zero,
     _tenant_id: str = Depends(require_elevation_reader),
 ):
     """Return a DEM grid dict {elevations, origin_lon, origin_lat, pixel_size_deg, cols, rows}
@@ -1027,30 +1078,32 @@ async def get_elevation_raster(
     Row order: ``elevations[0]`` is the NORTH edge of the bbox and column 0 the
     west edge (``row_order: "north_first"``, ``north_lat``). ``origin_lat`` is the
     SOUTH edge, kept for compatibility: place the grid from ``north_lat``.
+
+    Source: the national DEM when it is at most 30 m (or a fine coverage exists
+    for the requested resolution); otherwise, or when the national request
+    fails, Copernicus GLO-30. ``source.fallback_reason`` is ``national_coarser``,
+    ``national_error``, ``no_national`` or null, and ``source.attribution`` the
+    required credit text when the source defines one.
+
+    No-data: ``nodata=zero`` (default) returns no-data cells as 0; ``nodata=null``
+    returns them as JSON null. ``nodata_count`` is returned in both modes. No-data
+    is the dataset's declared nodata value, cells outside the read coverage, and
+    Copernicus 1-degree cells missing from the bucket (open sea: genuinely 0 m in
+    the product, but absent, so reported as no-data).
     """
+    from app.services.raster_source import choose_raster_source, read_copernicus_grid
+
     bbox = (min_lon, min_lat, max_lon, max_lat)
 
     # Find a DEM source covering the bbox centre
     centre_lat = (min_lat + max_lat) / 2.0
     centre_lon = (min_lon + max_lon) / 2.0
-    dem = resolve_source(centre_lat, centre_lon)
+    dem, fallback_reason = choose_raster_source(centre_lat, centre_lon, resolution_m)
     if not dem:
         raise HTTPException(status_code=404, detail={
             "error": "no_dem_coverage",
             "message": f"Bbox centre ({centre_lon}, {centre_lat}) outside all DEM coverage areas"
         })
-
-    # Resolve coverage by requested resolution (e.g. ES: 5m -> Elevacion4258_5,
-    # 25m -> Elevacion4258_25). Falls back to the source's default layer.
-    from app.dem_sources import coverage_for_resolution
-    chosen_layer = coverage_for_resolution(dem.country_code, resolution_m) or dem.layer_name
-
-    source_dict = {
-        "service_url": dem.service_url,
-        "layer_name": chosen_layer,
-        "format": dem.format,
-        "country_code": dem.country_code,
-    }
 
     # Compute grid dimensions
     pixel_size_deg = resolution_m / 111320.0
@@ -1059,26 +1112,42 @@ async def get_elevation_raster(
     # Recalculate from integer dimensions for consistent step
     pixel_size_deg = (max_lon - min_lon) / cols
 
-    try:
-        raw = await _wcs_bbox_query(source_dict, bbox, cols, rows)
-        with rasterio.open(io.BytesIO(raw)) as ds:
-            band = ds.read(1)
-            elevations = band.tolist()
-    except httpx.HTTPError as e:
-        logger.error("WCS raster query failed: %s", e)
-        raise HTTPException(status_code=502, detail={
-            "error": "wcs_unavailable",
-            "message": f"DEM source {dem.country_code} unreachable"
-        })
-    except Exception as e:
-        logger.error("Failed to build raster grid from %s: %s", dem.country_code, e)
-        raise HTTPException(status_code=502, detail={
-            "error": "invalid_response",
-            "message": f"Could not parse elevation raster from {dem.country_code}"
-        })
+    grid = None
+    mask = None
+    if dem.country_code != "EU":
+        try:
+            band, declared_nodata = await _national_raster(dem, resolution_m, bbox, cols, rows)
+            mask = np.zeros(band.shape, dtype=bool)
+            if np.issubdtype(band.dtype, np.floating):
+                mask |= np.isnan(band)
+            if declared_nodata is not None and not np.isnan(declared_nodata):
+                mask |= band == declared_nodata
+            grid = band
+        except Exception as e:
+            # Any failure (HTTP, timeout, parse) falls back to Copernicus.
+            logger.warning("National raster %s failed, trying Copernicus: %s", dem.country_code, type(e).__name__)
+            eu = get_source("EU")
+            if eu is None:
+                raise HTTPException(status_code=502, detail={
+                    "error": "wcs_unavailable",
+                    "message": f"DEM source {dem.country_code} unavailable"
+                })
+            dem, fallback_reason = eu, "national_error"
+
+    if grid is None:
+        try:
+            cop = await asyncio.to_thread(read_copernicus_grid, bbox, cols, rows)
+        except Exception as e:
+            logger.error("Copernicus raster read failed: %s", type(e).__name__)
+            raise HTTPException(status_code=502, detail={
+                "error": "copernicus_unavailable",
+                "message": "Copernicus DEM unreachable"
+            })
+        mask = np.isnan(cop)
+        grid = np.round(np.nan_to_num(cop.astype(np.float64), nan=0.0), 2)
 
     return {
-        "elevations": elevations,
+        "elevations": _finish_grid(grid, mask, nodata),
         "origin_lon": min_lon,
         "origin_lat": min_lat,
         "north_lat": max_lat,
@@ -1086,12 +1155,8 @@ async def get_elevation_raster(
         "pixel_size_deg": pixel_size_deg,
         "cols": cols,
         "rows": rows,
-        "source": {
-            "id": f"builtin:{dem.country_code}",
-            "name": dem.country_name,
-            "category": f"custom_wcs:{dem.country_code}",
-            "resolution_m": _parse_resolution(dem.resolution),
-        },
+        "nodata_count": int(mask.sum()),
+        "source": _raster_source_block(dem, fallback_reason),
     }
 
 

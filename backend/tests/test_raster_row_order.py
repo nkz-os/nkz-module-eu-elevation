@@ -27,9 +27,9 @@ def test_raster_declares_north_first_rows():
     grid = np.array([[400] * 4, [300] * 4, [200] * 4, [100] * 4])
     dem = SimpleNamespace(
         service_url="https://example.invalid/wcs", layer_name="dem",
-        format="GEOTIFFINT16", country_code="ZZ", country_name="Testland", resolution="25m",
+        format="GEOTIFFINT16", country_code="ZZ", country_name="Testland", resolution="25m", service_type="WCS",
     )
-    with patch.object(elevation, "resolve_source", return_value=dem), \
+    with patch("app.services.raster_source.resolve_source", return_value=dem), \
          patch.object(elevation, "_wcs_bbox_query", AsyncMock(return_value=_north_up_tiff(grid, bbox))):
         resp = asyncio.run(elevation.get_elevation_raster(
             min_lon=bbox[0], min_lat=bbox[1], max_lon=bbox[2], max_lat=bbox[3],

@@ -503,3 +503,80 @@ def test_national_error_with_huge_grid_is_400():
         with pytest.raises(elevation.HTTPException) as ei:
             _call((-2.0, 42.0, -1.0, 43.0), 10)
     assert ei.value.status_code == 400
+
+
+# --- Admission and dedicated executor ---------------------------------------------
+
+def test_ninth_concurrent_request_gets_503_with_retry_after(cells):
+    release = None
+
+    async def run():
+        nonlocal release
+        release = asyncio.Event()
+
+        async def held(source, bbox, width, height):
+            await release.wait()
+            return _tiff(np.full((height, width), 300), bbox)
+
+        def call():
+            return elevation.get_elevation_raster(
+                min_lon=ES_BBOX[0], min_lat=ES_BBOX[1], max_lon=ES_BBOX[2], max_lat=ES_BBOX[3],
+                resolution_m=10, purpose=elevation.PurposeEnum.auto,
+                nodata=elevation.NodataEnum.zero, _tenant_id="acme")
+
+        with patch.object(elevation, "_wcs_bbox_query", AsyncMock(side_effect=held)):
+            tasks = [asyncio.create_task(call()) for _ in range(elevation.RASTER_MAX_INFLIGHT)]
+            await asyncio.sleep(0.05)
+            with pytest.raises(elevation.HTTPException) as ei:
+                await call()
+            release.set()
+            done = await asyncio.gather(*tasks)
+        return ei.value, done
+
+    err, done = asyncio.run(run())
+    assert err.status_code == 503
+    assert err.detail["error"] == "raster_busy"
+    assert err.headers["Retry-After"] == "5"
+    assert len(done) == 8 and all(d["source"]["id"] == "builtin:ES" for d in done)
+    # all slots were returned
+    assert not elevation._raster_slots.locked()
+
+
+def test_slot_released_after_timeout(cells):
+    def slow(*a, **k):
+        time.sleep(1.0)
+
+    with patch.object(elevation, "REQUEST_DEADLINE_S", 0.3), \
+         patch.object(raster_source, "read_copernicus_grid", side_effect=slow):
+        with pytest.raises(elevation.HTTPException) as ei:
+            _call(DE_BBOX, 10)
+    assert ei.value.status_code == 504
+    assert not elevation._raster_slots.locked()
+    assert elevation._raster_slots._value == elevation.RASTER_MAX_INFLIGHT
+
+
+def test_raster_reads_use_dedicated_executor_not_default(cells):
+    cells((48, 11))
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        default_calls = []
+        orig = loop.run_in_executor
+
+        def spy(executor, fn, *args):
+            default_calls.append(executor)
+            return orig(executor, fn, *args)
+
+        loop.run_in_executor = spy
+        try:
+            await elevation.get_elevation_raster(
+                min_lon=DE_BBOX[0], min_lat=DE_BBOX[1], max_lon=DE_BBOX[2], max_lat=DE_BBOX[3],
+                resolution_m=10, purpose=elevation.PurposeEnum.auto,
+                nodata=elevation.NodataEnum.zero, _tenant_id="acme")
+        finally:
+            del loop.run_in_executor
+        return default_calls
+
+    executors = asyncio.run(run())
+    assert executors and all(e is elevation._RASTER_EXECUTOR for e in executors)
+    assert elevation._RASTER_EXECUTOR._max_workers == elevation.RASTER_MAX_WORKERS == 4

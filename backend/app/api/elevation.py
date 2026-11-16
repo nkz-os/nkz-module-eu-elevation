@@ -7,6 +7,7 @@ Tiers:
   - Tier 2: Ingested layers (quantized mesh tiles in MinIO)
 """
 
+import inspect
 import io
 import gzip
 import logging
@@ -15,6 +16,7 @@ import os
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
@@ -1020,6 +1022,21 @@ NATIONAL_TIMEOUT_S = 6.0
 MAX_COPERNICUS_CELLS = 4_000_000
 
 
+# /raster reads (GDAL, GeoTIFF decode) cannot be cancelled once started, so they
+# run on their own bounded pool: slow reads cannot starve the default executor
+# that /point and /heightmap use. Admission is bounded too, without queueing.
+RASTER_MAX_WORKERS = 4
+RASTER_MAX_INFLIGHT = 8
+RASTER_RETRY_AFTER_S = 5
+_RASTER_EXECUTOR = ThreadPoolExecutor(max_workers=RASTER_MAX_WORKERS, thread_name_prefix="raster")
+_raster_slots = asyncio.Semaphore(RASTER_MAX_INFLIGHT)
+
+
+async def _run_raster_blocking(fn, *args):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_RASTER_EXECUTOR, fn, *args)
+
+
 class NodataEnum(str, Enum):
     zero = "zero"
     null = "null"
@@ -1068,11 +1085,10 @@ async def _national_raster(dem, resolution_m, bbox, cols, rows):
         with rasterio.open(io.BytesIO(raw)) as ds:
             return ds.read(1), ds.nodata
 
-    return await asyncio.to_thread(_decode)
+    return await _run_raster_blocking(_decode)
 
 
-@router.get("/raster")
-async def get_elevation_raster(
+async def _get_elevation_raster(
     min_lon: float,
     min_lat: float,
     max_lon: float,
@@ -1080,7 +1096,7 @@ async def get_elevation_raster(
     resolution_m: float = 10,
     purpose: PurposeEnum = PurposeEnum.auto,
     nodata: NodataEnum = NodataEnum.zero,
-    _tenant_id: str = Depends(require_elevation_reader),
+    _tenant_id: str = "",
 ):
     """Return a DEM grid dict {elevations, origin_lon, origin_lat, pixel_size_deg, cols, rows}
     for the requested bounding box. Uses the best available DEM source.
@@ -1166,7 +1182,7 @@ async def get_elevation_raster(
                 if worth_reading:
                     try:
                         cop = await asyncio.wait_for(
-                            asyncio.to_thread(read_copernicus_grid, bbox, cols, rows),
+                            _run_raster_blocking(read_copernicus_grid, bbox, cols, rows),
                             timeout=max(remaining(), 0.1))
                     except Exception as e:
                         logger.warning("Zero-mask read failed, keeping national grid: %s", type(e).__name__)
@@ -1200,7 +1216,7 @@ async def get_elevation_raster(
                 cop = prefetched
             else:
                 cop = await asyncio.wait_for(
-                    asyncio.to_thread(read_copernicus_grid, bbox, cols, rows),
+                    _run_raster_blocking(read_copernicus_grid, bbox, cols, rows),
                     timeout=max(remaining(), 0.1))
         except asyncio.TimeoutError:
             logger.error("Copernicus raster read exceeded the request deadline")
@@ -1230,6 +1246,32 @@ async def get_elevation_raster(
         "nodata_count": int(mask.sum()),
         "source": _raster_source_block(dem, fallback_reason),
     }
+
+
+@router.get("/raster", description=inspect.cleandoc(_get_elevation_raster.__doc__))
+async def get_elevation_raster(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    resolution_m: float = 10,
+    purpose: PurposeEnum = PurposeEnum.auto,
+    nodata: NodataEnum = NodataEnum.zero,
+    _tenant_id: str = Depends(require_elevation_reader),
+):
+    """Admission wrapper: at most RASTER_MAX_INFLIGHT requests, never queued."""
+    if _raster_slots.locked():
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "raster_busy", "message": "Too many raster requests in flight"},
+            headers={"Retry-After": str(RASTER_RETRY_AFTER_S)},
+        )
+    await _raster_slots.acquire()
+    try:
+        return await _get_elevation_raster(
+            min_lon, min_lat, max_lon, max_lat, resolution_m, purpose, nodata, _tenant_id)
+    finally:
+        _raster_slots.release()
 
 
 # ============================================================================
